@@ -285,7 +285,7 @@ if archivo_subido is not None:
                                         with open(download.path(), "rb") as f:
                                             archivos_adjuntos_afiliado.append({"nombre": download.suggested_filename, "stream": io.BytesIO(f.read())})
                                     page_eentrega.get_by_role("button", name="Aceptar").click()
-                                mexc:
+                                except Exception:
                                     pass
                                 testigo_afiliado = descargar_testigo_en_memoria(page_eentrega)
 
