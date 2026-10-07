@@ -26,7 +26,7 @@ st.set_page_config(
 URL_LOGIN_EENTREGA = "https://codess.e-entrega.co/index.php"
 URL_DRIVE_FOLDER = "https://drive.google.com/drive/folders/1apUji6mHZ2z_Fm1q4OK3Y6tUoeuu-diX"
 
-# Funciones Auxiliares
+# Funciones Auxiliares y de Limpieza
 def es_guia_valida(valor):
     if not valor or pd.isna(valor):
         return False
@@ -93,8 +93,7 @@ def descargar_testigo_en_memoria(page):
 def obtener_o_crear_pestaña_drive(context, page_drive):
     if page_drive is None or page_drive.is_closed():
         page_drive = context.new_page()
-        page_drive.goto(URL_DRIVE_FOLDER)
-        page_drive.wait_for_load_state("domcontentloaded")
+        page_drive.goto(URL_DRIVE_FOLDER, wait_until="commit", timeout=45000)
     return page_drive
 
 def buscar_y_descargar_drive_web(context, page_drive, codigo_guia):
@@ -104,23 +103,19 @@ def buscar_y_descargar_drive_web(context, page_drive, codigo_guia):
         page_drive.bring_to_front()
 
         if URL_DRIVE_FOLDER not in page_drive.url:
-            page_drive.goto(URL_DRIVE_FOLDER)
-            page_drive.wait_for_load_state("domcontentloaded")
-            page_drive.wait_for_timeout(2000)
+            page_drive.goto(URL_DRIVE_FOLDER, wait_until="commit", timeout=45000)
 
-        input_busqueda = page_drive.locator('input[name="q"], input[aria-label*="Buscar"]').first
-        input_busqueda.wait_for(state="visible", timeout=15000)
+        # Esperar explícitamente a que el buscador de Drive aparezca interactivo
+        input_busqueda = page_drive.locator('input[name="q"], input[aria-label*="Buscar"], input[aria-label*="Search"]').first
+        input_busqueda.wait_for(state="visible", timeout=25000)
+
         input_busqueda.click()
+        page_drive.keyboard.press("Control+A")
+        page_drive.keyboard.press("Backspace")
         input_busqueda.fill(guia_limpia)
         page_drive.keyboard.press("Enter")
 
-        try:
-            page_drive.wait_for_function(f"""() => {{
-                const elementos = Array.from(document.querySelectorAll('[data-id], [data-target-id], a[href*="/file/d/"]'));
-                return elementos.some(el => (el.innerText || '').includes('{guia_limpia}'));
-            }}""", timeout=12000)
-        except Exception:
-            page_drive.wait_for_timeout(2000)
+        page_drive.wait_for_timeout(3000)
 
         selector_pdf = page_drive.locator(f'text=/{guia_limpia}.*\\.pdf/i, text=/.*\\.pdf.*{guia_limpia}/i').first
         if selector_pdf.count() == 0:
@@ -212,7 +207,7 @@ if archivo_subido is not None:
                     df = pd.read_excel(ruta_input, dtype=str)
 
                 entregas_afiliado, entregas_eps, entregas_empleado, entregas_arl = [], [], [], []
-                
+
                 with st.spinner("⏳ Extrayendo datos y consolidando archivos PDF... Por favor espera."):
                     progress_bar = st.progress(0)
 
@@ -221,10 +216,10 @@ if archivo_subido is not None:
                             headless=True,
                             args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
                         )
-                        
+
                         context = browser.new_context(accept_downloads=True)
-                        
-                        # Inyectar cookies de Google de manera segura
+
+                        # Inyectar cookies de Google
                         cookies_google = obtener_cookies_google()
                         if cookies_google:
                             try:
@@ -235,16 +230,14 @@ if archivo_subido is not None:
                         page_eentrega = context.new_page()
                         page_drive = None
 
-                        # Login en E-Entrega con esperas de seguridad
                         page_eentrega.goto(URL_LOGIN_EENTREGA)
                         page_eentrega.locator("#user").fill(usr_eentrega.strip())
                         page_eentrega.locator("#pass").fill(pass_eentrega.strip())
                         page_eentrega.locator("#login").click()
-                        
-                        # Esperar explícitamente a que aparezca el menú en E-Entrega
+
                         page_eentrega.wait_for_selector('span[lan="MENU_STATUS"]', timeout=30000)
                         page_eentrega.locator('span[lan="MENU_STATUS"]').click()
-                        
+
                         page_eentrega.wait_for_selector('text="Filtros avanzados"', timeout=15000)
                         page_eentrega.get_by_text("Filtros avanzados").click()
 
@@ -330,7 +323,7 @@ if archivo_subido is not None:
                                     elif nombre_entidad == "EMPLEADOR": entregas_empleado.append("N/A")
                                     elif nombre_entidad == "ARL": entregas_arl.append("N/A")
 
-                            # Unificación de archivos
+                            # Unificación
                             archivos_oficio = [f for f in archivos_adjuntos_afiliado if "OFICIO" in f["nombre"].upper()]
                             otros_adjuntos = [f for f in archivos_adjuntos_afiliado if f not in archivos_oficio]
                             lista_ordenada = archivos_oficio + otros_adjuntos + ([testigo_afiliado] if testigo_afiliado else []) + otros_testigos
@@ -349,7 +342,7 @@ if archivo_subido is not None:
 
                         browser.close()
 
-                    # Guardar resultados
+                    # Guardar archivo Excel
                     df["Entrega_Afiliado"] = entregas_afiliado
                     df["Entrega_EPS"] = entregas_eps
                     df["Entrega_Empleado"] = entregas_empleado
@@ -359,7 +352,7 @@ if archivo_subido is not None:
                     os.makedirs(os.path.dirname(ruta_excel_salida), exist_ok=True)
                     df.to_excel(ruta_excel_salida, index=False)
 
-                    # ZIP
+                    # Comprimir a ZIP
                     ruta_zip_salida = os.path.join(dir_trabajo, "Resultados_PDF.zip")
                     carpeta_a_zipear = os.path.join(dir_trabajo, "Resultados_PDF")
 
