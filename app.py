@@ -9,7 +9,7 @@ import pandas as pd
 from pypdf import PdfWriter
 import streamlit as st
 
-# Instalación automática de Chromium
+# Instalación automática de Chromium en el servidor de la nube
 try:
     subprocess.run(["playwright", "install", "chromium"], check=True)
 except Exception:
@@ -17,6 +17,7 @@ except Exception:
 
 from playwright.sync_api import sync_playwright
 
+# Configuración de página de Streamlit
 st.set_page_config(
     page_title="Consolidador de Testigos y PDFs",
     page_icon="📑",
@@ -25,7 +26,9 @@ st.set_page_config(
 
 URL_LOGIN_EENTREGA = "https://codess.e-entrega.co/index.php"
 URL_DRIVE_FOLDER = "https://drive.google.com/drive/folders/1apUji6mHZ2z_Fm1q4OK3Y6tUoeuu-diX"
+FOLDER_ID_DRIVE = "1apUji6mHZ2z_Fm1q4OK3Y6tUoeuu-diX"
 
+# Funciones Auxiliares
 def es_guia_valida(valor):
     if not valor or pd.isna(valor):
         return False
@@ -45,6 +48,7 @@ def limpiar_nombre_carpeta(nombre):
     return texto_limpio if texto_limpio else "SIN_SERVICIO"
 
 def obtener_cookies_google():
+    """Carga cookies desde Streamlit Secrets o desde archivo local."""
     if "google_session" in st.secrets and "cookies" in st.secrets["google_session"]:
         try:
             return json.loads(st.secrets["google_session"]["cookies"])
@@ -110,105 +114,68 @@ def buscar_y_descargar_drive_web(context, page_drive, codigo_guia):
     guia_limpia = limpiar_guia(codigo_guia)
     try:
         page_drive = obtener_o_crear_pestaña_drive(context, page_drive)
+        
+        # 1. BÚSQUEDA DIRECTA VÍA API HTTP USANDO LAS COOKIES DE SESIÓN
+        url_api_search = f"https://drive.google.com/drive/v3/files?q='{FOLDER_ID_DRIVE}'+in+parents+and+name+contains+'{guia_limpia}'+and+trashed%3Dfalse&fields=files(id%2Cname)"
+        
+        response = context.request.get(url_api_search)
+        if response.status == 200:
+            datos = response.json()
+            archivos = datos.get("files", [])
+            if archivos:
+                file_id = archivos[0]["id"]
+                nombre_archivo = archivos[0]["name"]
+                url_descarga = f"https://drive.google.com/uc?export=download&id={file_id}"
+                
+                resp_descarga = context.request.get(url_descarga)
+                if resp_descarga.status == 200:
+                    return {
+                        "nombre": nombre_archivo,
+                        "stream": io.BytesIO(resp_descarga.body())
+                    }, page_drive
+
+        # 2. BÚSQUEDA DE RESPALDO VÍA INTERFAZ WEB
         page_drive.bring_to_front()
-
-        if URL_DRIVE_FOLDER not in page_drive.url:
-            page_drive.goto(URL_DRIVE_FOLDER, wait_until="commit", timeout=45000)
-
-        input_busqueda = page_drive.locator('input[name="q"], input[aria-label*="Buscar"], input[aria-label*="Search"]').first
-        input_busqueda.wait_for(state="visible", timeout=25000)
+        input_busqueda = page_drive.locator('input[name="q"], input[aria-label*="Buscar"]').first
+        input_busqueda.wait_for(state="visible", timeout=15000)
         input_busqueda.click()
-
         page_drive.keyboard.press("Control+A")
         page_drive.keyboard.press("Backspace")
         input_busqueda.fill(guia_limpia)
         page_drive.keyboard.press("Enter")
+        
+        page_drive.wait_for_timeout(4000)
 
-        page_drive.wait_for_timeout(3000)
-
-        selector_pdf = page_drive.locator(f'text=/{guia_limpia}.*\\.pdf/i, text=/.*\\.pdf.*{guia_limpia}/i').first
-        if selector_pdf.count() == 0:
-            selector_pdf = page_drive.locator(f'text=/{guia_limpia}/i').first
-
+        selector_pdf = page_drive.locator(f'text=/{guia_limpia}/i').first
         if selector_pdf.count() > 0:
             selector_pdf.scroll_into_view_if_needed()
-            box = selector_pdf.bounding_box()
-            if box:
-                center_x = box["x"] + box["width"] / 2
-                center_y = box["y"] + box["height"] / 2
-                page_drive.mouse.click(center_x, center_y)
-                page_drive.wait_for_timeout(500)
-
-            file_id = selector_pdf.evaluate(f"""el => {{
-                const extraerDeUrl = (str) => {{
-                    if (!str) return null;
-                    const m = str.match(/(?:\\/d\\/|id=)([a-zA-Z0-9_-]{{25,45}})/);
-                    return m ? m[1] : null;
-                }};
-
+            file_id = selector_pdf.evaluate("""el => {
                 let curr = el;
-                while (curr && curr !== document.body) {{
-                    const idAttr = curr.getAttribute('data-target-id') || 
-                                   curr.getAttribute('data-id') || 
-                                   curr.getAttribute('data-legacy-id');
+                while (curr && curr !== document.body) {
+                    const idAttr = curr.getAttribute('data-target-id') || curr.getAttribute('data-id');
                     if (idAttr && idAttr.length >= 25) return idAttr;
-
-                    const href = curr.getAttribute('href');
-                    const idFromHref = extraerDeUrl(href);
-                    if (idFromHref) return idFromHref;
-
                     curr = curr.parentElement;
-                }}
-
-                const filaActiva = document.querySelector('[aria-selected="true"], [role="row"][aria-selected="true"]');
-                if (filaActiva) {{
-                    const idFila = filaActiva.getAttribute('data-target-id') || 
-                                   filaActiva.getAttribute('data-id') || 
-                                   filaActiva.getAttribute('data-legacy-id');
-                    if (idFila && idFila.length >= 25) return idFila;
-
-                    const enlaceInterno = filaActiva.querySelector('a[href]');
-                    if (enlaceInterno) {{
-                        const idHref = extraerDeUrl(enlaceInterno.getAttribute('href'));
-                        if (idHref) return idHref;
-                    }}
-                }}
-
+                }
                 return null;
-            }}""")
-
+            }""")
+            
             if file_id:
-                url_descarga_directa = f"https://drive.google.com/uc?export=download&id={file_id}"
-                try:
-                    with page_drive.expect_download(timeout=60000) as download_info:
-                        page_drive.evaluate(f"window.location.href = '{url_descarga_directa}'")
-
-                    download_file = download_info.value
-                    with open(download_file.path(), "rb") as f:
-                        bytes_pdf = f.read()
-
+                url_descarga = f"https://drive.google.com/uc?export=download&id={file_id}"
+                resp_descarga = context.request.get(url_descarga)
+                if resp_descarga.status == 200:
                     return {
-                        "nombre": download_file.suggested_filename if download_file.suggested_filename else f"{guia_limpia}.pdf",
-                        "stream": io.BytesIO(bytes_pdf)
+                        "nombre": f"{guia_limpia}.pdf",
+                        "stream": io.BytesIO(resp_descarga.body())
                     }, page_drive
-
-                except Exception:
-                    response = context.request.get(url_descarga_directa)
-                    if response.status == 200:
-                        bytes_pdf = response.body()
-                        return {
-                            "nombre": f"{guia_limpia}.pdf",
-                            "stream": io.BytesIO(bytes_pdf)
-                        }, page_drive
 
         return None, page_drive
 
     except Exception:
         return None, page_drive
 
-# Interfaz Web
+# Interfaz Web (Streamlit)
 st.title("📑 Generador Automático de Testigos")
-st.write("Ingresa tus credenciales de E-Entrega y sube el archivo de guías.")
+st.write("Ingresa tus credenciales de E-Entrega y sube el archivo con las guías.")
 
 st.subheader("1. Credenciales E-Entrega")
 col1, col2 = st.columns(2)
@@ -250,7 +217,7 @@ if archivo_subido is not None:
                         
                         context = browser.new_context(accept_downloads=True)
 
-                        # Cargar las cookies autenticadas de Google Drive
+                        # Inyectar las cookies de Google autenticadas
                         cookies_google = obtener_cookies_google()
                         if cookies_google:
                             try:
