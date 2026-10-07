@@ -1,6 +1,7 @@
 import io
 import os
 import re
+import json
 import tempfile
 import zipfile
 import subprocess
@@ -8,7 +9,7 @@ import pandas as pd
 from pypdf import PdfWriter
 import streamlit as st
 
-# Instalación de Chromium en el servidor de la nube
+# Instalación automática de Chromium
 try:
     subprocess.run(["playwright", "install", "chromium"], check=True)
 except Exception:
@@ -16,7 +17,6 @@ except Exception:
 
 from playwright.sync_api import sync_playwright
 
-# Configuración de página de Streamlit
 st.set_page_config(
     page_title="Consolidador de Testigos y PDFs",
     page_icon="📑",
@@ -25,8 +25,6 @@ st.set_page_config(
 
 URL_LOGIN_EENTREGA = "https://codess.e-entrega.co/index.php"
 URL_DRIVE_FOLDER = "https://drive.google.com/drive/folders/1apUji6mHZ2z_Fm1q4OK3Y6tUoeuu-diX"
-
-# --- Funciones de Apoyo (Identicas a tu código local) ---
 
 def es_guia_valida(valor):
     if not valor or pd.isna(valor):
@@ -45,6 +43,20 @@ def limpiar_nombre_carpeta(nombre):
     texto = str(nombre).strip().upper()
     texto_limpio = re.sub(r'[\\/*?:"<>|]', "_", texto)
     return texto_limpio if texto_limpio else "SIN_SERVICIO"
+
+def obtener_cookies_google():
+    if "google_session" in st.secrets and "cookies" in st.secrets["google_session"]:
+        try:
+            return json.loads(st.secrets["google_session"]["cookies"])
+        except Exception:
+            pass
+    if os.path.exists("cookies_google.json"):
+        try:
+            with open("cookies_google.json", "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return []
 
 def esperar_modal_generando_testigo(page):
     try:
@@ -88,58 +100,32 @@ def descargar_testigo_en_memoria(page, reintentos=3):
                 pass
     return None
 
-def obtener_o_crear_pestaña_drive(context, page_drive, correo_google, pass_google):
+def obtener_o_crear_pestaña_drive(context, page_drive):
     if page_drive is None or page_drive.is_closed():
         page_drive = context.new_page()
-        page_drive.goto(URL_DRIVE_FOLDER)
-        page_drive.wait_for_load_state("domcontentloaded")
-
-        try:
-            input_email = page_drive.locator('input[type="email"], #identifierId').first
-            if input_email.is_visible(timeout=6000):
-                input_email.fill(correo_google)
-                page_drive.keyboard.press("Enter")
-                page_drive.wait_for_timeout(4000)
-
-            input_pass = page_drive.locator('input[type="password"], input[name="Passwd"]').first
-            if input_pass.is_visible(timeout=6000):
-                input_pass.fill(pass_google)
-                page_drive.keyboard.press("Enter")
-                page_drive.wait_for_timeout(5000)
-
-        except Exception:
-            pass
-
+        page_drive.goto(URL_DRIVE_FOLDER, wait_until="commit", timeout=45000)
     return page_drive
 
-def buscar_y_descargar_drive_web(context, page_drive, codigo_guia, correo_google, pass_google):
+def buscar_y_descargar_drive_web(context, page_drive, codigo_guia):
     guia_limpia = limpiar_guia(codigo_guia)
     try:
-        page_drive = obtener_o_crear_pestaña_drive(context, page_drive, correo_google, pass_google)
+        page_drive = obtener_o_crear_pestaña_drive(context, page_drive)
         page_drive.bring_to_front()
 
         if URL_DRIVE_FOLDER not in page_drive.url:
-            page_drive.goto(URL_DRIVE_FOLDER)
-            page_drive.wait_for_load_state("domcontentloaded")
-            page_drive.wait_for_timeout(2000)
+            page_drive.goto(URL_DRIVE_FOLDER, wait_until="commit", timeout=45000)
 
-        # 1. Tipear la guía en la casilla de búsqueda UI
-        input_busqueda = page_drive.locator('input[name="q"], input[aria-label*="Buscar"]').first
-        input_busqueda.wait_for(state="visible", timeout=15000)
+        input_busqueda = page_drive.locator('input[name="q"], input[aria-label*="Buscar"], input[aria-label*="Search"]').first
+        input_busqueda.wait_for(state="visible", timeout=25000)
         input_busqueda.click()
+
+        page_drive.keyboard.press("Control+A")
+        page_drive.keyboard.press("Backspace")
         input_busqueda.fill(guia_limpia)
         page_drive.keyboard.press("Enter")
 
-        # 2. Espera activa del renderizado en el DOM
-        try:
-            page_drive.wait_for_function(f"""() => {{
-                const elementos = Array.from(document.querySelectorAll('[data-id], [data-target-id], a[href*="/file/d/"]'));
-                return elementos.some(el => (el.innerText || '').includes('{guia_limpia}'));
-            }}""", timeout=12000)
-        except Exception:
-            page_drive.wait_for_timeout(2000)
+        page_drive.wait_for_timeout(3000)
 
-        # 3. Localizar coincidencia
         selector_pdf = page_drive.locator(f'text=/{guia_limpia}.*\\.pdf/i, text=/.*\\.pdf.*{guia_limpia}/i').first
         if selector_pdf.count() == 0:
             selector_pdf = page_drive.locator(f'text=/{guia_limpia}/i').first
@@ -153,7 +139,6 @@ def buscar_y_descargar_drive_web(context, page_drive, codigo_guia, correo_google
                 page_drive.mouse.click(center_x, center_y)
                 page_drive.wait_for_timeout(500)
 
-            # 4. Extraer el ID de Drive de la selección
             file_id = selector_pdf.evaluate(f"""el => {{
                 const extraerDeUrl = (str) => {{
                     if (!str) return null;
@@ -189,13 +174,6 @@ def buscar_y_descargar_drive_web(context, page_drive, codigo_guia, correo_google
                     }}
                 }}
 
-                const todos = Array.from(document.querySelectorAll('[data-id], [data-target-id]'));
-                for (let elem of todos) {{
-                    const txt = (elem.innerText || '').toLowerCase();
-                    if (txt.includes('{guia_limpia}')) {{
-                        return elem.getAttribute('data-target-id') || elem.getAttribute('data-id');
-                    }}
-                }}
                 return null;
             }}""")
 
@@ -228,13 +206,10 @@ def buscar_y_descargar_drive_web(context, page_drive, codigo_guia, correo_google
     except Exception:
         return None, page_drive
 
-
-# --- Interfaz de Usuario Web (Streamlit) ---
-
+# Interfaz Web
 st.title("📑 Generador Automático de Testigos")
-st.write("Ingresa tus credenciales personales y carga tu archivo Excel/CSV.")
+st.write("Ingresa tus credenciales de E-Entrega y sube el archivo de guías.")
 
-# Formularios de Credenciales
 st.subheader("1. Credenciales E-Entrega")
 col1, col2 = st.columns(2)
 with col1:
@@ -242,21 +217,12 @@ with col1:
 with col2:
     pass_eentrega = st.text_input("Contraseña E-Entrega", type="password")
 
-st.subheader("2. Credenciales Google Drive")
-col3, col4 = st.columns(2)
-with col3:
-    usr_google = st.text_input("Correo Google", value="estiven.ayala@codess.org.co")
-with col4:
-    pass_google = st.text_input("Contraseña Google", type="password")
-
-st.subheader("3. Archivo Excel/CSV")
+st.subheader("2. Archivo Excel/CSV")
 archivo_subido = st.file_uploader("Selecciona el archivo con las guías", type=["csv", "xlsx"])
 
-credenciales_completas = all([usr_eentrega.strip(), pass_eentrega.strip(), usr_google.strip(), pass_google.strip()])
-
 if archivo_subido is not None:
-    if not credenciales_completas:
-        st.warning("⚠️ Debes diligenciar todas las credenciales de E-Entrega y Google para procesar.")
+    if not (usr_eentrega.strip() and pass_eentrega.strip()):
+        st.warning("⚠️ Debes ingresar tus credenciales de E-Entrega.")
     else:
         st.success(f"Archivo listo: **{archivo_subido.name}**")
 
@@ -277,17 +243,24 @@ if archivo_subido is not None:
                     progress_bar = st.progress(0)
 
                     with sync_playwright() as p:
-                        # En la nube se ejecuta en modo headless
                         browser = p.chromium.launch(
                             headless=True,
                             args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
                         )
+                        
                         context = browser.new_context(accept_downloads=True)
+
+                        # Cargar las cookies autenticadas de Google Drive
+                        cookies_google = obtener_cookies_google()
+                        if cookies_google:
+                            try:
+                                context.add_cookies(cookies_google)
+                            except Exception:
+                                pass
 
                         page_eentrega = context.new_page()
                         page_drive = None
 
-                        # Login en E-Entrega
                         page_eentrega.goto(URL_LOGIN_EENTREGA)
                         page_eentrega.locator("#user").fill(usr_eentrega.strip())
                         page_eentrega.locator("#pass").fill(pass_eentrega.strip())
@@ -320,12 +293,9 @@ if archivo_subido is not None:
                             archivos_adjuntos_afiliado = []
                             testigo_afiliado = None
 
-                            # 1. AFILIADO
                             guia_afiliado_limpia = limpiar_guia(GUIA_AFILIADO)
                             if len(guia_afiliado_limpia) > 6:
-                                pdf_drive, page_drive = buscar_y_descargar_drive_web(
-                                    context, page_drive, guia_afiliado_limpia, usr_google.strip(), pass_google.strip()
-                                )
+                                pdf_drive, page_drive = buscar_y_descargar_drive_web(context, page_drive, guia_afiliado_limpia)
                                 if pdf_drive:
                                     testigo_afiliado = pdf_drive
                                     entregas_afiliado.append("Encontrado en Drive")
@@ -365,22 +335,14 @@ if archivo_subido is not None:
 
                                 testigo_afiliado = descargar_testigo_en_memoria(page_eentrega)
 
-                            # 2. GUIA EPS, EMPLEADOR, ARL
-                            guia_testigos = [
-                                ("EPS", GUIA_EPS),
-                                ("EMPLEADOR", GUIA_EMPLEADOR),
-                                ("ARL", GUIA_ARL)
-                            ]
-
+                            guia_testigos = [("EPS", GUIA_EPS), ("EMPLEADOR", GUIA_EMPLEADOR), ("ARL", GUIA_ARL)]
                             otros_testigos = []
 
                             for nombre_entidad, codigo_guia in guia_testigos:
                                 if es_guia_valida(codigo_guia):
                                     guia_limpia = limpiar_guia(codigo_guia)
                                     if len(guia_limpia) > 6:
-                                        pdf_drive, page_drive = buscar_y_descargar_drive_web(
-                                            context, page_drive, guia_limpia, usr_google.strip(), pass_google.strip()
-                                        )
+                                        pdf_drive, page_drive = buscar_y_descargar_drive_web(context, page_drive, guia_limpia)
                                         if pdf_drive:
                                             otros_testigos.append(pdf_drive)
                                             txt_estado = "Encontrado en Drive"
@@ -398,21 +360,14 @@ if archivo_subido is not None:
                                         if testigo_entidad:
                                             otros_testigos.append(testigo_entidad)
 
-                                    if nombre_entidad == "EPS":
-                                        entregas_eps.append(txt_estado)
-                                    elif nombre_entidad == "EMPLEADOR":
-                                        entregas_empleado.append(txt_estado)
-                                    elif nombre_entidad == "ARL":
-                                        entregas_arl.append(txt_estado)
+                                    if nombre_entidad == "EPS": entregas_eps.append(txt_estado)
+                                    elif nombre_entidad == "EMPLEADOR": entregas_empleado.append(txt_estado)
+                                    elif nombre_entidad == "ARL": entregas_arl.append(txt_estado)
                                 else:
-                                    if nombre_entidad == "EPS":
-                                        entregas_eps.append("N/A")
-                                    elif nombre_entidad == "EMPLEADOR":
-                                        entregas_empleado.append("N/A")
-                                    elif nombre_entidad == "ARL":
-                                        entregas_arl.append("N/A")
+                                    if nombre_entidad == "EPS": entregas_eps.append("N/A")
+                                    elif nombre_entidad == "EMPLEADOR": entregas_empleado.append("N/A")
+                                    elif nombre_entidad == "ARL": entregas_arl.append("N/A")
 
-                            # 3. UNIÓN DE STREAMS Y ESTRUCTURA DE CARPETAS
                             archivos_oficio = [f for f in archivos_adjuntos_afiliado if "OFICIO" in f["nombre"].upper()]
                             otros_adjuntos_afiliado = [f for f in archivos_adjuntos_afiliado if f not in archivos_oficio]
 
@@ -438,7 +393,6 @@ if archivo_subido is not None:
 
                         browser.close()
 
-                    # Guardar Excel de Resultados
                     df["Entrega_Afiliado"] = entregas_afiliado
                     df["Entrega_EPS"] = entregas_eps
                     df["Entrega_Empleado"] = entregas_empleado
@@ -448,7 +402,6 @@ if archivo_subido is not None:
                     os.makedirs(os.path.dirname(ruta_excel_salida), exist_ok=True)
                     df.to_excel(ruta_excel_salida, index=False)
 
-                    # Comprimir carpeta completa a ZIP
                     ruta_zip_salida = os.path.join(dir_trabajo, "Resultados_PDF.zip")
                     carpeta_a_zipear = os.path.join(dir_trabajo, "Resultados_PDF")
 
