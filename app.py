@@ -1,15 +1,15 @@
 import io
 import os
 import re
-import json
 import tempfile
 import zipfile
 import subprocess
+import requests
 import pandas as pd
 from pypdf import PdfWriter
 import streamlit as st
 
-# Instalación automática de Chromium en el servidor
+# Instalación de Chromium en la nube
 try:
     subprocess.run(["playwright", "install", "chromium"], check=True)
 except Exception:
@@ -26,7 +26,7 @@ st.set_page_config(
 URL_LOGIN_EENTREGA = "https://codess.e-entrega.co/index.php"
 URL_DRIVE_FOLDER = "https://drive.google.com/drive/folders/1apUji6mHZ2z_Fm1q4OK3Y6tUoeuu-diX"
 
-# Funciones Auxiliares
+# Funciones de Limpieza
 def es_guia_valida(valor):
     if not valor or pd.isna(valor):
         return False
@@ -45,20 +45,45 @@ def limpiar_nombre_carpeta(nombre):
     texto_limpio = re.sub(r'[\\/*?:"<>|]', "_", texto)
     return texto_limpio if texto_limpio else "SIN_SERVICIO"
 
-def obtener_cookies_google():
-    """Carga cookies desde Streamlit Secrets o desde archivo local."""
-    if "google_session" in st.secrets and "cookies" in st.secrets["google_session"]:
-        try:
-            return json.loads(st.secrets["google_session"]["cookies"])
-        except Exception:
-            pass
-    if os.path.exists("cookies_google.json"):
-        try:
-            with open("cookies_google.json", "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return []
+def descargar_pdf_drive_directo(codigo_guia):
+    """
+    Descarga directamente desde Google Drive sin requerir login ni sufrir bloqueos por IP.
+    """
+    guia_limpia = limpiar_guia(codigo_guia)
+    
+    # Intentar búsqueda en el índice de vistas previas / descargas de Google
+    search_url = f"https://drive.google.com/embeddedfolderview?id=1apUji6mHZ2z_Fm1q4OK3Y6tUoeuu-diX#list"
+    try:
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        })
+        resp = session.get(search_url, timeout=15)
+        
+        # Buscar el ID del archivo que contenga el código de la guía
+        matches = re.findall(r'data-id="([a-zA-Z0-9_-]{25,45})"[^>]*>.*?(' + re.escape(guia_limpia) + r'[^<]*\.pdf)', resp.text, re.IGNORECASE | re.DOTALL)
+        
+        if not matches:
+            # Búsqueda secundaria en el HTML renderizado
+            matches_id = re.findall(r'/file/d/([a-zA-Z0-9_-]{25,45})', resp.text)
+            for file_id in set(matches_id):
+                url_dl = f"https://drive.google.com/uc?export=download&id={file_id}"
+                head_resp = session.get(url_dl, stream=True, timeout=10)
+                cd = head_resp.headers.get('Content-Disposition', '')
+                if guia_limpia in cd or guia_limpia in head_resp.text:
+                    pdf_bytes = session.get(url_dl).content
+                    return {"nombre": f"{guia_limpia}.pdf", "stream": io.BytesIO(pdf_bytes)}
+
+        if matches:
+            file_id, nombre_archivo = matches[0][0], matches[0][1]
+            url_dl = f"https://drive.google.com/uc?export=download&id={file_id}"
+            pdf_bytes = session.get(url_dl).content
+            return {"nombre": nombre_archivo if nombre_archivo else f"{guia_limpia}.pdf", "stream": io.BytesIO(pdf_bytes)}
+
+    except Exception:
+        pass
+    
+    return None
 
 def esperar_modal_generando_testigo(page):
     try:
@@ -102,81 +127,6 @@ def descargar_testigo_en_memoria(page, reintentos=3):
                 pass
     return None
 
-def obtener_o_crear_pestaña_drive(context, page_drive):
-    if page_drive is None or page_drive.is_closed():
-        page_drive = context.new_page()
-        page_drive.goto(URL_DRIVE_FOLDER, wait_until="commit", timeout=45000)
-    return page_drive
-
-def buscar_y_descargar_drive_web(context, page_drive, codigo_guia):
-    guia_limpia = limpiar_guia(codigo_guia)
-    try:
-        page_drive = obtener_o_crear_pestaña_drive(context, page_drive)
-        
-        # 1. BÚSQUEDA GENERAL VÍA API HTTP (Incluyendo subcarpetas y uniones)
-        url_api_search = f"https://drive.google.com/drive/v3/files?q=name+contains+'{guia_limpia}'+and+trashed%3Dfalse&fields=files(id%2Cname)"
-        
-        response = context.request.get(url_api_search)
-        if response.status == 200:
-            datos = response.json()
-            archivos = datos.get("files", [])
-            
-            # Filtrar PDFs que contengan la guía
-            pdfs_encontrados = [f for f in archivos if f["name"].lower().endswith(".pdf")]
-            if pdfs_encontrados:
-                file_id = pdfs_encontrados[0]["id"]
-                nombre_archivo = pdfs_encontrados[0]["name"]
-                url_descarga = f"https://drive.google.com/uc?export=download&id={file_id}"
-                
-                resp_descarga = context.request.get(url_descarga)
-                if resp_descarga.status == 200:
-                    return {
-                        "nombre": nombre_archivo,
-                        "stream": io.BytesIO(resp_descarga.body())
-                    }, page_drive
-
-        # 2. RESPALDO: BÚSQUEDA INTERACTIVA EN EL NAVEGADOR
-        page_drive.bring_to_front()
-        input_busqueda = page_drive.locator('input[name="q"], input[aria-label*="Buscar"]').first
-        input_busqueda.wait_for(state="visible", timeout=15000)
-        input_busqueda.click()
-        page_drive.keyboard.press("Control+A")
-        page_drive.keyboard.press("Backspace")
-        input_busqueda.fill(guia_limpia)
-        page_drive.keyboard.press("Enter")
-        
-        page_drive.wait_for_timeout(5000)
-
-        # Evaluar en el DOM el elemento seleccionado
-        selector_pdf = page_drive.locator(f'text=/{guia_limpia}/i').first
-        if selector_pdf.count() > 0:
-            selector_pdf.scroll_into_view_if_needed()
-            file_id = selector_pdf.evaluate("""el => {
-                let curr = el;
-                while (curr && curr !== document.body) {
-                    const idAttr = curr.getAttribute('data-target-id') || curr.getAttribute('data-id') || curr.getAttribute('data-legacy-id');
-                    if (idAttr && idAttr.length >= 25) return idAttr;
-                    curr = curr.parentElement;
-                }
-                const fila = document.querySelector('[aria-selected="true"]');
-                if (fila) return fila.getAttribute('data-target-id') || fila.getAttribute('data-id');
-                return null;
-            }""")
-            
-            if file_id:
-                url_descarga = f"https://drive.google.com/uc?export=download&id={file_id}"
-                resp_descarga = context.request.get(url_descarga)
-                if resp_descarga.status == 200:
-                    return {
-                        "nombre": f"{guia_limpia}.pdf",
-                        "stream": io.BytesIO(resp_descarga.body())
-                    }, page_drive
-
-        return None, page_drive
-
-    except Exception:
-        return None, page_drive
-
 # Interfaz Web (Streamlit)
 st.title("📑 Generador Automático de Testigos")
 st.write("Ingresa tus credenciales de E-Entrega y sube el archivo con las guías.")
@@ -210,7 +160,7 @@ if archivo_subido is not None:
 
                 entregas_afiliado, entregas_eps, entregas_empleado, entregas_arl = [], [], [], []
 
-                with st.spinner("⏳ Conectando a E-Entrega y buscando archivos en Drive... Por favor espera."):
+                with st.spinner("⏳ Extrayendo datos y procesando guías... Por favor espera."):
                     progress_bar = st.progress(0)
 
                     with sync_playwright() as p:
@@ -218,21 +168,10 @@ if archivo_subido is not None:
                             headless=True,
                             args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
                         )
-                        
                         context = browser.new_context(accept_downloads=True)
-
-                        # Inyectar cookies de Google
-                        cookies_google = obtener_cookies_google()
-                        if cookies_google:
-                            try:
-                                context.add_cookies(cookies_google)
-                            except Exception:
-                                pass
-
                         page_eentrega = context.new_page()
-                        page_drive = None
 
-                        # Intentar Login en E-Entrega
+                        # Login en E-Entrega
                         page_eentrega.goto(URL_LOGIN_EENTREGA)
                         page_eentrega.locator("#user").fill(usr_eentrega.strip())
                         page_eentrega.locator("#pass").fill(pass_eentrega.strip())
@@ -278,7 +217,7 @@ if archivo_subido is not None:
 
                             guia_afiliado_limpia = limpiar_guia(GUIA_AFILIADO)
                             if len(guia_afiliado_limpia) > 6:
-                                pdf_drive, page_drive = buscar_y_descargar_drive_web(context, page_drive, guia_afiliado_limpia)
+                                pdf_drive = descargar_pdf_drive_directo(guia_afiliado_limpia)
                                 if pdf_drive:
                                     testigo_afiliado = pdf_drive
                                     entregas_afiliado.append("Encontrado en Drive")
@@ -325,7 +264,7 @@ if archivo_subido is not None:
                                 if es_guia_valida(codigo_guia):
                                     guia_limpia = limpiar_guia(codigo_guia)
                                     if len(guia_limpia) > 6:
-                                        pdf_drive, page_drive = buscar_y_descargar_drive_web(context, page_drive, guia_limpia)
+                                        pdf_drive = descargar_pdf_drive_directo(guia_limpia)
                                         if pdf_drive:
                                             otros_testigos.append(pdf_drive)
                                             txt_estado = "Encontrado en Drive"
