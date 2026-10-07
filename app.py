@@ -3,9 +3,17 @@ import os
 import re
 import tempfile
 import zipfile
+import subprocess
 import pandas as pd
 from pypdf import PdfWriter
 import streamlit as st
+
+# 0. Asegurar la instalación de binarios Chromium en el contenedor de la nube
+try:
+    subprocess.run(["playwright", "install", "chromium"], check=True)
+except Exception:
+    pass
+
 from playwright.sync_api import sync_playwright
 
 # Configuración de página de Streamlit
@@ -214,12 +222,14 @@ if archivo_subido is not None:
 
                 entregas_afiliado, entregas_eps, entregas_empleado, entregas_arl = [], [], [], []
                 
-                # Indicador visual limpio y discreto
                 with st.spinner("⏳ Extrayendo datos y consolidando archivos PDF... Por favor espera."):
                     progress_bar = st.progress(0)
 
                     with sync_playwright() as p:
-                        browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-setuid-sandbox"])
+                        browser = p.chromium.launch(
+                            headless=True,
+                            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+                        )
                         context = browser.new_context(accept_downloads=True)
 
                         page_eentrega = context.new_page()
@@ -244,7 +254,6 @@ if archivo_subido is not None:
                             GUIA_ARL = str(row.get("GUIA ARL", "")).strip()
                             NOMBRE_SERVICIO = limpiar_nombre_carpeta(row.get("SERVICIO", ""))
 
-                            # Actualizar unicamente la barra de porcentaje global
                             progress_bar.progress((idx + 1) / total_filas)
 
                             if not es_guia_valida(GUIA_AFILIADO):
@@ -322,7 +331,7 @@ if archivo_subido is not None:
                                     elif nombre_entidad == "EMPLEADOR": entregas_empleado.append("N/A")
                                     elif nombre_entidad == "ARL": entregas_arl.append("N/A")
 
-                            # Unificación silenciosa en memoria
+                            # Unificación en memoria
                             archivos_oficio = [f for f in archivos_adjuntos_afiliado if "OFICIO" in f["nombre"].upper()]
                             otros_adjuntos = [f for f in archivos_adjuntos_afiliado if f not in archivos_oficio]
                             lista_ordenada = archivos_oficio + otros_adjuntos + ([testigo_afiliado] if testigo_afiliado else []) + otros_testigos
