@@ -9,7 +9,7 @@ import pandas as pd
 from pypdf import PdfWriter
 import streamlit as st
 
-# Instalación automática de Chromium en el servidor de la nube
+# Instalación automática de Chromium en el servidor
 try:
     subprocess.run(["playwright", "install", "chromium"], check=True)
 except Exception:
@@ -17,7 +17,6 @@ except Exception:
 
 from playwright.sync_api import sync_playwright
 
-# Configuración de página de Streamlit
 st.set_page_config(
     page_title="Consolidador de Testigos y PDFs",
     page_icon="📑",
@@ -26,7 +25,6 @@ st.set_page_config(
 
 URL_LOGIN_EENTREGA = "https://codess.e-entrega.co/index.php"
 URL_DRIVE_FOLDER = "https://drive.google.com/drive/folders/1apUji6mHZ2z_Fm1q4OK3Y6tUoeuu-diX"
-FOLDER_ID_DRIVE = "1apUji6mHZ2z_Fm1q4OK3Y6tUoeuu-diX"
 
 # Funciones Auxiliares
 def es_guia_valida(valor):
@@ -115,16 +113,19 @@ def buscar_y_descargar_drive_web(context, page_drive, codigo_guia):
     try:
         page_drive = obtener_o_crear_pestaña_drive(context, page_drive)
         
-        # 1. BÚSQUEDA DIRECTA VÍA API HTTP USANDO LAS COOKIES DE SESIÓN
-        url_api_search = f"https://drive.google.com/drive/v3/files?q='{FOLDER_ID_DRIVE}'+in+parents+and+name+contains+'{guia_limpia}'+and+trashed%3Dfalse&fields=files(id%2Cname)"
+        # 1. BÚSQUEDA GENERAL VÍA API HTTP (Incluyendo subcarpetas y uniones)
+        url_api_search = f"https://drive.google.com/drive/v3/files?q=name+contains+'{guia_limpia}'+and+trashed%3Dfalse&fields=files(id%2Cname)"
         
         response = context.request.get(url_api_search)
         if response.status == 200:
             datos = response.json()
             archivos = datos.get("files", [])
-            if archivos:
-                file_id = archivos[0]["id"]
-                nombre_archivo = archivos[0]["name"]
+            
+            # Filtrar PDFs que contengan la guía
+            pdfs_encontrados = [f for f in archivos if f["name"].lower().endswith(".pdf")]
+            if pdfs_encontrados:
+                file_id = pdfs_encontrados[0]["id"]
+                nombre_archivo = pdfs_encontrados[0]["name"]
                 url_descarga = f"https://drive.google.com/uc?export=download&id={file_id}"
                 
                 resp_descarga = context.request.get(url_descarga)
@@ -134,7 +135,7 @@ def buscar_y_descargar_drive_web(context, page_drive, codigo_guia):
                         "stream": io.BytesIO(resp_descarga.body())
                     }, page_drive
 
-        # 2. BÚSQUEDA DE RESPALDO VÍA INTERFAZ WEB
+        # 2. RESPALDO: BÚSQUEDA INTERACTIVA EN EL NAVEGADOR
         page_drive.bring_to_front()
         input_busqueda = page_drive.locator('input[name="q"], input[aria-label*="Buscar"]').first
         input_busqueda.wait_for(state="visible", timeout=15000)
@@ -144,18 +145,21 @@ def buscar_y_descargar_drive_web(context, page_drive, codigo_guia):
         input_busqueda.fill(guia_limpia)
         page_drive.keyboard.press("Enter")
         
-        page_drive.wait_for_timeout(4000)
+        page_drive.wait_for_timeout(5000)
 
+        # Evaluar en el DOM el elemento seleccionado
         selector_pdf = page_drive.locator(f'text=/{guia_limpia}/i').first
         if selector_pdf.count() > 0:
             selector_pdf.scroll_into_view_if_needed()
             file_id = selector_pdf.evaluate("""el => {
                 let curr = el;
                 while (curr && curr !== document.body) {
-                    const idAttr = curr.getAttribute('data-target-id') || curr.getAttribute('data-id');
+                    const idAttr = curr.getAttribute('data-target-id') || curr.getAttribute('data-id') || curr.getAttribute('data-legacy-id');
                     if (idAttr && idAttr.length >= 25) return idAttr;
                     curr = curr.parentElement;
                 }
+                const fila = document.querySelector('[aria-selected="true"]');
+                if (fila) return fila.getAttribute('data-target-id') || fila.getAttribute('data-id');
                 return null;
             }""")
             
@@ -180,7 +184,7 @@ st.write("Ingresa tus credenciales de E-Entrega y sube el archivo con las guías
 st.subheader("1. Credenciales E-Entrega")
 col1, col2 = st.columns(2)
 with col1:
-    usr_eentrega = st.text_input("Correo E-Entrega", value="analista.ml@codess.org.co")
+    usr_eentrega = st.text_input("Correo E-Entrega", placeholder="ejemplo@codess.org.co")
 with col2:
     pass_eentrega = st.text_input("Contraseña E-Entrega", type="password")
 
@@ -206,7 +210,7 @@ if archivo_subido is not None:
 
                 entregas_afiliado, entregas_eps, entregas_empleado, entregas_arl = [], [], [], []
 
-                with st.spinner("⏳ Extrayendo datos y consolidando archivos PDF... Por favor espera."):
+                with st.spinner("⏳ Conectando a E-Entrega y buscando archivos en Drive... Por favor espera."):
                     progress_bar = st.progress(0)
 
                     with sync_playwright() as p:
@@ -217,7 +221,7 @@ if archivo_subido is not None:
                         
                         context = browser.new_context(accept_downloads=True)
 
-                        # Inyectar las cookies de Google autenticadas
+                        # Inyectar cookies de Google
                         cookies_google = obtener_cookies_google()
                         if cookies_google:
                             try:
@@ -228,15 +232,27 @@ if archivo_subido is not None:
                         page_eentrega = context.new_page()
                         page_drive = None
 
+                        # Intentar Login en E-Entrega
                         page_eentrega.goto(URL_LOGIN_EENTREGA)
                         page_eentrega.locator("#user").fill(usr_eentrega.strip())
                         page_eentrega.locator("#pass").fill(pass_eentrega.strip())
                         page_eentrega.locator("#login").click()
-                        page_eentrega.wait_for_load_state("networkidle")
+                        
+                        login_exitoso = False
+                        try:
+                            page_eentrega.wait_for_selector('span[lan="MENU_STATUS"], .alert, #login_error', timeout=15000)
+                            if page_eentrega.locator('span[lan="MENU_STATUS"]').is_visible():
+                                login_exitoso = True
+                        except Exception:
+                            pass
 
-                        page_eentrega.wait_for_selector('span[lan="MENU_STATUS"]', timeout=30000)
+                        if not login_exitoso:
+                            st.error("❌ No se pudo iniciar sesión en E-Entrega. Verifica tus credenciales.")
+                            browser.close()
+                            st.stop()
+
                         page_eentrega.locator('span[lan="MENU_STATUS"]').click()
-                        page_eentrega.wait_for_load_state("networkidle")
+                        page_eentrega.wait_for_selector('text="Filtros avanzados"', timeout=15000)
                         page_eentrega.get_by_text("Filtros avanzados").click()
 
                         total_filas = len(df)
