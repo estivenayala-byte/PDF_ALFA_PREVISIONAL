@@ -149,7 +149,6 @@ def verificar_conexion_drive(service):
         return False
 
 def buscar_y_descargar_drive_api(service, codigo_guia):
-    """Busca y descarga un archivo PDF en carpetas y Unidades Compartidas."""
     if not service or not codigo_guia:
         return None
 
@@ -191,7 +190,6 @@ def buscar_y_descargar_drive_api(service, codigo_guia):
     return None
 
 def buscar_varias_guias_drive_paralelo(service, lista_guias):
-    """Consulta múltiples guías en Google Drive simultáneamente en paralelo."""
     if not service or not lista_guias:
         return {}
     
@@ -233,23 +231,33 @@ def limpiar_nombre_carpeta(nombre):
 
 def esperar_modal_generando_testigo(page):
     try:
-        page.wait_for_selector('text="Generando testigo, espera un momento..."', state="detached", timeout=30000)
+        page.wait_for_selector('text="Generando testigo, espera un momento..."', state="detached", timeout=20000)
     except Exception:
         pass
 
 def obtener_evento_tabla(page):
     try:
-        page.wait_for_selector("#tablaestados tbody tr", timeout=3000)
+        page.wait_for_selector("#tablaestados tbody tr", timeout=5000)
         texto = page.locator("#tablaestados tbody tr").first.locator("td").nth(4).inner_text().strip()
         return texto if texto else "Sin Estado"
     except Exception:
         return "No encontrado"
 
+def consultar_guia_eentrega(page, guia):
+    try:
+        page.bring_to_front()
+        page.wait_for_selector("#message", state="visible", timeout=10000)
+        page.locator("#message").fill(guia)
+        page.locator("#btn_Buscar").click()
+        return True
+    except Exception:
+        return False
+
 def descargar_testigo_en_memoria(page, reintentos=2):
     for intento in range(1, reintentos + 1):
         try:
-            page.wait_for_selector("#ToolTables_tablaestados_1", state="visible", timeout=5000)
-            with page.expect_download(timeout=30000) as download_info:
+            page.wait_for_selector("#ToolTables_tablaestados_1", state="visible", timeout=6000)
+            with page.expect_download(timeout=25000) as download_info:
                 page.locator("#ToolTables_tablaestados_1").click()
 
             esperar_modal_generando_testigo(page)
@@ -334,7 +342,7 @@ if archivo_subido is not None:
                 status_container = st.status("⚡ **Ejecutando proceso optimizado de extracción...**", expanded=True)
                 
                 with status_container:
-                    st.write("🌐 Iniciando navegador ultrarrápido Chromium...")
+                    st.write("🌐 Iniciando navegador seguro Chromium...")
                     progress_bar = st.progress(0)
 
                     with sync_playwright() as p:
@@ -345,8 +353,8 @@ if archivo_subido is not None:
                         context = browser.new_context(accept_downloads=True)
                         page_eentrega = context.new_page()
 
-                        # Bloquear imágenes pesadas y tipografías externas en Playwright para mayor velocidad
-                        page_eentrega.route("**/*.{png,jpg,jpeg,png,svg,woff,woff2,ttf}", lambda route: route.abort())
+                        # Bloquear fuentes pesadas en Playwright para mejorar tiempos sin romper estilos esenciales
+                        page_eentrega.route("**/*.{woff,woff2,ttf,eot}", lambda route: route.abort())
 
                         # Login en E-Entrega
                         page_eentrega.goto(URL_LOGIN_EENTREGA)
@@ -354,9 +362,10 @@ if archivo_subido is not None:
                         page_eentrega.locator("#pass").fill(pass_eentrega.strip())
                         page_eentrega.locator("#login").click()
 
-                        page_eentrega.wait_for_selector('span[lan="MENU_STATUS"]', timeout=20000)
+                        page_eentrega.wait_for_selector('span[lan="MENU_STATUS"]', timeout=30000)
                         page_eentrega.locator('span[lan="MENU_STATUS"]').click()
                         page_eentrega.get_by_text("Filtros avanzados").click()
+                        page_eentrega.wait_for_selector("#message", state="visible", timeout=15000)
 
                         total_filas = len(df)
                         for idx, row in df.iterrows():
@@ -393,39 +402,38 @@ if archivo_subido is not None:
                                 else:
                                     entregas_afiliado.append("No encontrado en Drive")
                             else:
-                                page_eentrega.bring_to_front()
-                                page_eentrega.locator("#message").fill(guia_afiliado_limpia)
-                                page_eentrega.locator("#btn_Buscar").click()
+                                if consultar_guia_eentrega(page_eentrega, guia_afiliado_limpia):
+                                    txt_afiliado = obtener_evento_tabla(page_eentrega)
+                                    entregas_afiliado.append(txt_afiliado)
 
-                                txt_afiliado = obtener_evento_tabla(page_eentrega)
-                                entregas_afiliado.append(txt_afiliado)
+                                    try:
+                                        page_eentrega.locator(".btnVerMensaje").first.click()
+                                        page_eentrega.wait_for_selector(".modal-body, #modalMensaje, .modal-content", state="visible", timeout=5000)
 
-                                try:
-                                    page_eentrega.locator(".btnVerMensaje").first.click()
-                                    page_eentrega.wait_for_selector(".modal-body, #modalMensaje, .modal-content", state="visible", timeout=5000)
+                                        archivos_adjuntos = page_eentrega.locator('text=/.+\\.pdf/i')
+                                        for i in range(archivos_adjuntos.count()):
+                                            try:
+                                                with page_eentrega.expect_download(timeout=15000) as download_info:
+                                                    archivos_adjuntos.nth(i).click()
 
-                                    archivos_adjuntos = page_eentrega.locator('text=/.+\\.pdf/i')
-                                    for i in range(archivos_adjuntos.count()):
-                                        try:
-                                            with page_eentrega.expect_download(timeout=15000) as download_info:
-                                                archivos_adjuntos.nth(i).click()
+                                                download = download_info.value
+                                                with open(download.path(), "rb") as f:
+                                                    bytes_pdf = f.read()
 
-                                            download = download_info.value
-                                            with open(download.path(), "rb") as f:
-                                                bytes_pdf = f.read()
+                                                archivos_adjuntos_afiliado.append({
+                                                    "nombre": download.suggested_filename,
+                                                    "stream": io.BytesIO(bytes_pdf)
+                                                })
+                                            except Exception:
+                                                pass
 
-                                            archivos_adjuntos_afiliado.append({
-                                                "nombre": download.suggested_filename,
-                                                "stream": io.BytesIO(bytes_pdf)
-                                            })
-                                        except Exception:
-                                            pass
+                                        page_eentrega.get_by_role("button", name="Aceptar").click()
+                                    except Exception:
+                                        pass
 
-                                    page_eentrega.get_by_role("button", name="Aceptar").click()
-                                except Exception:
-                                    pass
-
-                                testigo_afiliado = descargar_testigo_en_memoria(page_eentrega)
+                                    testigo_afiliado = descargar_testigo_en_memoria(page_eentrega)
+                                else:
+                                    entregas_afiliado.append("Error de Búsqueda Web")
 
                             guia_testigos = [("EPS", GUIA_EPS), ("EMPLEADOR", GUIA_EMPLEADOR), ("ARL", GUIA_ARL)]
                             otros_testigos = []
@@ -441,15 +449,13 @@ if archivo_subido is not None:
                                         else:
                                             txt_estado = "No encontrado en Drive"
                                     else:
-                                        page_eentrega.bring_to_front()
-                                        page_eentrega.locator("#message").fill(codigo_guia)
-                                        page_eentrega.locator("#btn_Buscar").click()
-
-                                        txt_estado = obtener_evento_tabla(page_eentrega)
-
-                                        testigo_entidad = descargar_testigo_en_memoria(page_eentrega)
-                                        if testigo_entidad:
-                                            otros_testigos.append(testigo_entidad)
+                                        if consultar_guia_eentrega(page_eentrega, guia_limpia):
+                                            txt_estado = obtener_evento_tabla(page_eentrega)
+                                            testigo_entidad = descargar_testigo_en_memoria(page_eentrega)
+                                            if testigo_entidad:
+                                                otros_testigos.append(testigo_entidad)
+                                        else:
+                                            txt_estado = "Error de Búsqueda Web"
 
                                     if nombre_entidad == "EPS": entregas_eps.append(txt_estado)
                                     elif nombre_entidad == "EMPLEADOR": entregas_empleado.append(txt_estado)
@@ -491,35 +497,4 @@ if archivo_subido is not None:
                     df["Entrega_ARL"] = entregas_arl
 
                     ruta_excel_salida = os.path.join(dir_trabajo, "Resultados_PDF", "Resultado_Entregas.xlsx")
-                    os.makedirs(os.path.dirname(ruta_excel_salida), exist_ok=True)
-                    df.to_excel(ruta_excel_salida, index=False)
-
-                    # Comprimir a ZIP
-                    ruta_zip_salida = os.path.join(dir_trabajo, "Resultados_PDF.zip")
-                    carpeta_a_zipear = os.path.join(dir_trabajo, "Resultados_PDF")
-
-                    with zipfile.ZipFile(ruta_zip_salida, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                        for root, dirs, files in os.walk(carpeta_a_zipear):
-                            for file in files:
-                                path_absoluto = os.path.join(root, file)
-                                path_relativo = os.path.relpath(path_absoluto, carpeta_a_zipear)
-                                zipf.write(path_absoluto, arcname=path_relativo)
-
-                status_container.update(label="⚡ **¡Proceso completado a máxima velocidad!**", state="complete", expanded=False)
-
-                # --- Resumen e Indicadores Visuales CODESS ---
-                st.subheader("📊 Indicadores del Procesamiento")
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Total Registros Procesados", len(df))
-                m2.metric("Archivos Hallados en Drive", entregas_empleado.count("Encontrado en Drive") + entregas_afiliado.count("Encontrado en Drive"))
-                m3.metric("Testigos Exitosos E-Entrega", total_filas - entregas_afiliado.count("No encontrado en Drive"))
-
-                st.markdown("<br>", unsafe_allow_html=True)
-                
-                with open(ruta_zip_salida, "rb") as f_zip:
-                    st.download_button(
-                        label="📦 Descargar Resultados Consolidados (.ZIP)",
-                        data=f_zip.read(),
-                        file_name="Resultados_PDF_CODESS.zip",
-                        mime="application/zip"
-                    )
+                    os.makedirs(os.path.dirname(
