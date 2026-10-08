@@ -46,7 +46,7 @@ st.markdown("""
     /* Encabezado Principal Institucional */
     .header-container {
         background: #FFFFFF;
-        padding: 1.8rem 2.5rem;
+        padding: 1.5rem 2rem;
         border-radius: 16px;
         border-left: 8px solid var(--codess-green);
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
@@ -55,21 +55,30 @@ st.markdown("""
 
     .header-title {
         color: #2C3E50;
-        font-size: 2.1rem;
+        font-size: 2rem;
         font-weight: 800;
-        margin: 0;
+        margin: 0.5rem 0 0 0;
     }
 
     .header-subtitle {
         color: var(--codess-gray);
-        font-size: 1.05rem;
-        margin-top: 0.4rem;
+        font-size: 1rem;
+        margin-top: 0.3rem;
         font-weight: 500;
     }
 
     .header-accent {
         color: var(--codess-orange);
         font-weight: 700;
+    }
+
+    /* Ajuste de Imagen del Logo sin Fondo Negro */
+    .logo-container img {
+        max-height: 55px !important;
+        width: auto !important;
+        object-fit: contain;
+        mix-blend-mode: multiply; /* Remueve los bordes/fondos oscuros al fusionarse con blanco */
+        filter: contrast(110%);
     }
 
     /* Botón Principal */
@@ -251,17 +260,16 @@ def descargar_testigo_en_memoria(page, reintentos=3):
 
 # --- Panel Lateral (Sidebar) ---
 with st.sidebar:
+    st.markdown('<div class="logo-container">', unsafe_allow_html=True)
     if os.path.exists(NOMBRE_LOGO):
-        st.image(NOMBRE_LOGO, use_container_width=True)
+        st.image(NOMBRE_LOGO, width=170)
     else:
         st.markdown("""
-            <div style="text-align: center;">
-                <div style="background-color: #ffffff; padding: 10px; border-radius: 10px; border: 1px solid #E0E0E0; margin-bottom: 15px;">
-                    <h2 style="color: #5C9E31; margin:0; font-weight:900;">CODESS</h2>
-                    <p style="color: #E67E22; margin:0; font-size:11px; font-weight:bold;">DESARROLLO DE LA SEGURIDAD SOCIAL</p>
-                </div>
+            <div style="background-color: #ffffff; padding: 10px; border-radius: 10px; border: 1px solid #E0E0E0; margin-bottom: 15px;">
+                <h2 style="color: #5C9E31; margin:0; font-weight:900;">CODESS</h2>
             </div>
         """, unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("#### 🛠️ Estado de Servicios")
     drive_service = obtener_servicio_drive()
@@ -269,20 +277,19 @@ with st.sidebar:
     st.markdown("---")
     st.caption("🚀 **Corporación para el Desarrollo de la Seguridad Social**\n\nSistema Automático de Testigos v2.0")
 
-# --- Encabezado Principal Institucional con Logo Integrado al Lado ---
-col_head1, col_head2 = st.columns([3, 1])
+# --- Encabezado Principal con Logo en la Esquina Superior Izquierda ---
+st.markdown('<div class="header-container">', unsafe_allow_html=True)
 
-with col_head1:
-    st.markdown("""
-        <div class="header-container">
-            <h1 class="header-title">Consolidador de Testigos y Evidencias</h1>
-            <p class="header-subtitle">Plataforma Automática <span class="header-accent">E-Entrega & Google Drive</span></p>
-        </div>
-    """, unsafe_allow_html=True)
+if os.path.exists(NOMBRE_LOGO):
+    st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+    st.image(NOMBRE_LOGO, width=220)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-with col_head2:
-    if os.path.exists(NOMBRE_LOGO):
-        st.image(NOMBRE_LOGO, use_container_width=True)
+st.markdown("""
+        <h1 class="header-title">Consolidador de Testigos y Evidencias</h1>
+        <p class="header-subtitle">Plataforma Automática <span class="header-accent">E-Entrega & Google Drive</span></p>
+    </div>
+""", unsafe_allow_html=True)
 
 # --- Sección de Entradas de Usuario ---
 col_left, col_right = st.columns(2)
