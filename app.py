@@ -1,15 +1,15 @@
 import io
 import os
 import re
+import time
 import tempfile
 import zipfile
 import subprocess
-import requests
 import pandas as pd
 from pypdf import PdfWriter
 import streamlit as st
 
-# Instalación de Chromium en la nube
+# Instalación automática de Chromium en el servidor de Streamlit Cloud
 try:
     subprocess.run(["playwright", "install", "chromium"], check=True)
 except Exception:
@@ -26,64 +26,31 @@ st.set_page_config(
 URL_LOGIN_EENTREGA = "https://codess.e-entrega.co/index.php"
 URL_DRIVE_FOLDER = "https://drive.google.com/drive/folders/1apUji6mHZ2z_Fm1q4OK3Y6tUoeuu-diX"
 
-# Funciones de Limpieza
+REINTENTOS_MAXIMOS = 3
+
+# --- Funciones de Apoyo (Tu Lógica Exacta) ---
+
 def es_guia_valida(valor):
     if not valor or pd.isna(valor):
         return False
     texto = str(valor).strip().upper()
     return texto not in ["", "N/A", "NA", "NAN", "NONE", "NULL", "-"]
 
+
 def limpiar_guia(valor):
     if not valor:
         return ""
     return str(valor).strip().replace(" ", "")
 
+
 def limpiar_nombre_carpeta(nombre):
+    """Limpia el texto del servicio para que sea un nombre de carpeta válido."""
     if not nombre or pd.isna(nombre):
         return "SIN_SERVICIO"
     texto = str(nombre).strip().upper()
     texto_limpio = re.sub(r'[\\/*?:"<>|]', "_", texto)
     return texto_limpio if texto_limpio else "SIN_SERVICIO"
 
-def descargar_pdf_drive_directo(codigo_guia):
-    """
-    Descarga directamente desde Google Drive sin requerir login ni sufrir bloqueos por IP.
-    """
-    guia_limpia = limpiar_guia(codigo_guia)
-    
-    # Intentar búsqueda en el índice de vistas previas / descargas de Google
-    search_url = f"https://drive.google.com/embeddedfolderview?id=1apUji6mHZ2z_Fm1q4OK3Y6tUoeuu-diX#list"
-    try:
-        session = requests.Session()
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        })
-        resp = session.get(search_url, timeout=15)
-        
-        # Buscar el ID del archivo que contenga el código de la guía
-        matches = re.findall(r'data-id="([a-zA-Z0-9_-]{25,45})"[^>]*>.*?(' + re.escape(guia_limpia) + r'[^<]*\.pdf)', resp.text, re.IGNORECASE | re.DOTALL)
-        
-        if not matches:
-            # Búsqueda secundaria en el HTML renderizado
-            matches_id = re.findall(r'/file/d/([a-zA-Z0-9_-]{25,45})', resp.text)
-            for file_id in set(matches_id):
-                url_dl = f"https://drive.google.com/uc?export=download&id={file_id}"
-                head_resp = session.get(url_dl, stream=True, timeout=10)
-                cd = head_resp.headers.get('Content-Disposition', '')
-                if guia_limpia in cd or guia_limpia in head_resp.text:
-                    pdf_bytes = session.get(url_dl).content
-                    return {"nombre": f"{guia_limpia}.pdf", "stream": io.BytesIO(pdf_bytes)}
-
-        if matches:
-            file_id, nombre_archivo = matches[0][0], matches[0][1]
-            url_dl = f"https://drive.google.com/uc?export=download&id={file_id}"
-            pdf_bytes = session.get(url_dl).content
-            return {"nombre": nombre_archivo if nombre_archivo else f"{guia_limpia}.pdf", "stream": io.BytesIO(pdf_bytes)}
-
-    except Exception:
-        pass
-    
-    return None
 
 def esperar_modal_generando_testigo(page):
     try:
@@ -91,6 +58,7 @@ def esperar_modal_generando_testigo(page):
         page.wait_for_selector('text="Generando testigo, espera un momento..."', state="detached", timeout=60000)
     except Exception:
         pass
+
 
 def obtener_evento_tabla(page):
     try:
@@ -100,10 +68,12 @@ def obtener_evento_tabla(page):
     except Exception:
         return "No encontrado"
 
-def descargar_testigo_en_memoria(page, reintentos=3):
+
+def descargar_testigo_en_memoria(page, reintentos=REINTENTOS_MAXIMOS):
     for intento in range(1, reintentos + 1):
         try:
             page.wait_for_selector("#ToolTables_tablaestados_1", state="visible", timeout=10000)
+
             with page.expect_download(timeout=60000) as download_info:
                 page.locator("#ToolTables_tablaestados_1").click()
 
@@ -120,6 +90,7 @@ def descargar_testigo_en_memoria(page, reintentos=3):
             }
         except Exception:
             esperar_modal_generando_testigo(page)
+            time.sleep(2)
             try:
                 page.locator("#btn_Buscar").click()
                 page.wait_for_load_state("networkidle")
@@ -127,25 +98,157 @@ def descargar_testigo_en_memoria(page, reintentos=3):
                 pass
     return None
 
-# Interfaz Web (Streamlit)
+
+def obtener_o_crear_pestaña_drive(context, page_drive, correo_google, password_google):
+    if page_drive is None or page_drive.is_closed():
+        page_drive = context.new_page()
+        page_drive.goto(URL_DRIVE_FOLDER)
+        page_drive.wait_for_load_state("domcontentloaded")
+
+        try:
+            input_email = page_drive.locator('input[type="email"], #identifierId').first
+            if input_email.is_visible(timeout=6000):
+                input_email.fill(correo_google)
+                page_drive.keyboard.press("Enter")
+                page_drive.wait_for_timeout(4000)
+
+            input_pass = page_drive.locator('input[type="password"], input[name="Passwd"]').first
+            if input_pass.is_visible(timeout=6000):
+                input_pass.fill(password_google)
+                page_drive.keyboard.press("Enter")
+                page_drive.wait_for_timeout(5000)
+
+        except Exception:
+            pass
+
+    return page_drive
+
+
+def buscar_y_descargar_drive_web(context, page_drive, codigo_guia, correo_google, password_google):
+    guia_limpia = limpiar_guia(codigo_guia)
+    try:
+        page_drive = obtener_o_crear_pestaña_drive(context, page_drive, correo_google, password_google)
+        page_drive.bring_to_front()
+
+        if URL_DRIVE_FOLDER not in page_drive.url:
+            page_drive.goto(URL_DRIVE_FOLDER)
+            page_drive.wait_for_load_state("domcontentloaded")
+            page_drive.wait_for_timeout(2000)
+
+        # 1. Tipear la guía en la casilla de búsqueda UI
+        input_busqueda = page_drive.locator('input[name="q"], input[aria-label*="Buscar"]').first
+        input_busqueda.wait_for(state="visible", timeout=15000)
+        input_busqueda.click()
+        input_busqueda.fill(guia_limpia)
+        page_drive.keyboard.press("Enter")
+
+        # 2. Espera activa del renderizado en el DOM
+        try:
+            page_drive.wait_for_function(f"""() => {{
+                const elementos = Array.from(document.querySelectorAll('[data-id], [data-target-id], a[href*="/file/d/"]'));
+                return elementos.some(el => (el.innerText || '').includes('{guia_limpia}'));
+            }}""", timeout=12000)
+        except Exception:
+            page_drive.wait_for_timeout(3000)
+
+        # 3. Localizar coincidencia
+        selector_pdf = page_drive.locator(f'text=/{guia_limpia}.*\\.pdf/i, text=/.*\\.pdf.*{guia_limpia}/i').first
+        if selector_pdf.count() == 0:
+            selector_pdf = page_drive.locator(f'text=/{guia_limpia}/i').first
+
+        if selector_pdf.count() > 0:
+            # 4. EXTRAER EL ID DE DRIVE DE LA SELECCIÓN
+            file_id = selector_pdf.evaluate(f"""el => {{
+                const extraerDeUrl = (str) => {{
+                    if (!str) return null;
+                    const m = str.match(/(?:\\/d\\/|id=)([a-zA-Z0-9_-]{{25,45}})/);
+                    return m ? m[1] : null;
+                }};
+
+                let curr = el;
+                while (curr && curr !== document.body) {{
+                    const idAttr = curr.getAttribute('data-target-id') || 
+                                   curr.getAttribute('data-id') || 
+                                   curr.getAttribute('data-legacy-id');
+                    if (idAttr && idAttr.length >= 25) return idAttr;
+
+                    const href = curr.getAttribute('href');
+                    const idFromHref = extraerDeUrl(href);
+                    if (idFromHref) return idFromHref;
+
+                    curr = curr.parentElement;
+                }}
+
+                const filaActiva = document.querySelector('[aria-selected="true"], [role="row"][aria-selected="true"]');
+                if (filaActiva) {{
+                    const idFila = filaActiva.getAttribute('data-target-id') || 
+                                   filaActiva.getAttribute('data-id') || 
+                                   filaActiva.getAttribute('data-legacy-id');
+                    if (idFila && idFila.length >= 25) return idFila;
+
+                    const enlaceInterno = filaActiva.querySelector('a[href]');
+                    if (enlaceInterno) {{
+                        const idHref = extraerDeUrl(enlaceInterno.getAttribute('href'));
+                        if (idHref) return idHref;
+                    }}
+                }}
+
+                const todos = Array.from(document.querySelectorAll('[data-id], [data-target-id]'));
+                for (let elem of todos) {{
+                    const txt = (elem.innerText || '').toLowerCase();
+                    if (txt.includes('{guia_limpia}')) {{
+                        return elem.getAttribute('data-target-id') || elem.getAttribute('data-id');
+                    }}
+                }}
+                return null;
+            }}""")
+
+            if file_id:
+                url_descarga_directa = f"https://drive.google.com/uc?export=download&id={file_id}"
+                response = context.request.get(url_descarga_directa)
+                if response.status == 200:
+                    bytes_pdf = response.body()
+                    return {
+                        "nombre": f"{guia_limpia}.pdf",
+                        "stream": io.BytesIO(bytes_pdf)
+                    }, page_drive
+
+        return None, page_drive
+
+    except Exception:
+        return None, page_drive
+
+
+# --- Interfaz de Usuario Web (Streamlit) ---
+
 st.title("📑 Generador Automático de Testigos")
-st.write("Ingresa tus credenciales de E-Entrega y sube el archivo con las guías.")
+st.write("Diligencia tus datos corporativos y selecciona el archivo de guías a procesar.")
 
 st.subheader("1. Credenciales E-Entrega")
 col1, col2 = st.columns(2)
 with col1:
     usr_eentrega = st.text_input("Correo E-Entrega", placeholder="ejemplo@codess.org.co")
 with col2:
-    pass_eentrega = st.text_input("Contraseña E-Entrega", type="password")
+    pass_eentrega = st.text_input("Contraseña E-Entrega", type="password", placeholder="••••••••")
 
-st.subheader("2. Archivo Excel/CSV")
-archivo_subido = st.file_uploader("Selecciona el archivo con las guías", type=["csv", "xlsx"])
+st.subheader("2. Credenciales Google Drive")
+col3, col4 = st.columns(2)
+with col3:
+    usr_google = st.text_input("Correo Google", placeholder="ejemplo@codess.org.co")
+with col4:
+    pass_google = st.text_input("Contraseña Google", type="password", placeholder="••••••••")
+
+st.subheader("3. Archivo Excel/CSV")
+archivo_subido = st.file_uploader("Selecciona el archivo Excel o CSV con las guías", type=["csv", "xlsx"])
+
+# Validación para asegurar que el usuario ingrese todos los campos
+credenciales_completas = all([usr_eentrega.strip(), pass_eentrega.strip(), usr_google.strip(), pass_google.strip()])
 
 if archivo_subido is not None:
-    if not (usr_eentrega.strip() and pass_eentrega.strip()):
-        st.warning("⚠️ Debes ingresar tus credenciales de E-Entrega.")
+    if not credenciales_completas:
+        st.warning("⚠️ Debes diligenciar tus usuarios y contraseñas de E-Entrega y Google para iniciar.")
     else:
-        st.success(f"Archivo listo: **{archivo_subido.name}**")
+        st.success(f"Archivo cargado correctamente: **{archivo_subido.name}**")
 
         if st.button("🚀 Iniciar Procesamiento", type="primary"):
             with tempfile.TemporaryDirectory() as dir_trabajo:
@@ -160,38 +263,38 @@ if archivo_subido is not None:
 
                 entregas_afiliado, entregas_eps, entregas_empleado, entregas_arl = [], [], [], []
 
-                with st.spinner("⏳ Extrayendo datos y procesando guías... Por favor espera."):
+                with st.spinner("⏳ Procesando guías en segundo plano... Por favor espera."):
                     progress_bar = st.progress(0)
 
                     with sync_playwright() as p:
                         browser = p.chromium.launch(
                             headless=True,
-                            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+                            args=[
+                                "--disable-blink-features=AutomationControlled",
+                                "--no-sandbox",
+                                "--disable-setuid-sandbox",
+                                "--disable-dev-shm-usage"
+                            ]
                         )
-                        context = browser.new_context(accept_downloads=True)
-                        page_eentrega = context.new_page()
 
-                        # Login en E-Entrega
+                        context = browser.new_context(
+                            accept_downloads=True,
+                            viewport={"width": 1920, "height": 1080},
+                            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                        )
+
+                        page_eentrega = context.new_page()
+                        page_drive = None
+
+                        # Inicio de sesión en E-Entrega con los datos ingresados por el usuario
                         page_eentrega.goto(URL_LOGIN_EENTREGA)
                         page_eentrega.locator("#user").fill(usr_eentrega.strip())
                         page_eentrega.locator("#pass").fill(pass_eentrega.strip())
                         page_eentrega.locator("#login").click()
-                        
-                        login_exitoso = False
-                        try:
-                            page_eentrega.wait_for_selector('span[lan="MENU_STATUS"], .alert, #login_error', timeout=15000)
-                            if page_eentrega.locator('span[lan="MENU_STATUS"]').is_visible():
-                                login_exitoso = True
-                        except Exception:
-                            pass
-
-                        if not login_exitoso:
-                            st.error("❌ No se pudo iniciar sesión en E-Entrega. Verifica tus credenciales.")
-                            browser.close()
-                            st.stop()
+                        page_eentrega.wait_for_load_state("networkidle")
 
                         page_eentrega.locator('span[lan="MENU_STATUS"]').click()
-                        page_eentrega.wait_for_selector('text="Filtros avanzados"', timeout=15000)
+                        page_eentrega.wait_for_load_state("networkidle")
                         page_eentrega.get_by_text("Filtros avanzados").click()
 
                         total_filas = len(df)
@@ -201,6 +304,7 @@ if archivo_subido is not None:
                             GUIA_EPS = str(row.get("GUIA EPS", "")).strip()
                             GUIA_EMPLEADOR = str(row.get("GUIA EMPLEADOR", "")).strip()
                             GUIA_ARL = str(row.get("GUIA ARL", "")).strip()
+
                             NOMBRE_SERVICIO = limpiar_nombre_carpeta(row.get("SERVICIO", ""))
 
                             progress_bar.progress((idx + 1) / total_filas)
@@ -215,9 +319,13 @@ if archivo_subido is not None:
                             archivos_adjuntos_afiliado = []
                             testigo_afiliado = None
 
+                            # 1. AFILIADO
                             guia_afiliado_limpia = limpiar_guia(GUIA_AFILIADO)
                             if len(guia_afiliado_limpia) > 6:
-                                pdf_drive = descargar_pdf_drive_directo(guia_afiliado_limpia)
+                                pdf_drive, page_drive = buscar_y_descargar_drive_web(
+                                    context, page_drive, guia_afiliado_limpia, usr_google.strip(), pass_google.strip()
+                                )
+
                                 if pdf_drive:
                                     testigo_afiliado = pdf_drive
                                     entregas_afiliado.append("Encontrado en Drive")
@@ -237,7 +345,9 @@ if archivo_subido is not None:
                                     page_eentrega.wait_for_selector(".modal-body, #modalMensaje, .modal-content", state="visible", timeout=10000)
 
                                     archivos_adjuntos = page_eentrega.locator('text=/.+\\.pdf/i')
-                                    for i in range(archivos_adjuntos.count()):
+                                    cantidad_archivos = archivos_adjuntos.count()
+
+                                    for i in range(cantidad_archivos):
                                         with page_eentrega.expect_download(timeout=30000) as download_info:
                                             archivos_adjuntos.nth(i).click()
 
@@ -257,14 +367,23 @@ if archivo_subido is not None:
 
                                 testigo_afiliado = descargar_testigo_en_memoria(page_eentrega)
 
-                            guia_testigos = [("EPS", GUIA_EPS), ("EMPLEADOR", GUIA_EMPLEADOR), ("ARL", GUIA_ARL)]
+                            # 2. GUIA EPS, EMPLEADOR, ARL
+                            guia_testigos = [
+                                ("EPS", GUIA_EPS),
+                                ("EMPLEADOR", GUIA_EMPLEADOR),
+                                ("ARL", GUIA_ARL)
+                            ]
+
                             otros_testigos = []
 
                             for nombre_entidad, codigo_guia in guia_testigos:
                                 if es_guia_valida(codigo_guia):
                                     guia_limpia = limpiar_guia(codigo_guia)
                                     if len(guia_limpia) > 6:
-                                        pdf_drive = descargar_pdf_drive_directo(guia_limpia)
+                                        pdf_drive, page_drive = buscar_y_descargar_drive_web(
+                                            context, page_drive, guia_limpia, usr_google.strip(), pass_google.strip()
+                                        )
+
                                         if pdf_drive:
                                             otros_testigos.append(pdf_drive)
                                             txt_estado = "Encontrado en Drive"
@@ -282,14 +401,21 @@ if archivo_subido is not None:
                                         if testigo_entidad:
                                             otros_testigos.append(testigo_entidad)
 
-                                    if nombre_entidad == "EPS": entregas_eps.append(txt_estado)
-                                    elif nombre_entidad == "EMPLEADOR": entregas_empleado.append(txt_estado)
-                                    elif nombre_entidad == "ARL": entregas_arl.append(txt_estado)
+                                    if nombre_entidad == "EPS":
+                                        entregas_eps.append(txt_estado)
+                                    elif nombre_entidad == "EMPLEADOR":
+                                        entregas_empleado.append(txt_estado)
+                                    elif nombre_entidad == "ARL":
+                                        entregas_arl.append(txt_estado)
                                 else:
-                                    if nombre_entidad == "EPS": entregas_eps.append("N/A")
-                                    elif nombre_entidad == "EMPLEADOR": entregas_empleado.append("N/A")
-                                    elif nombre_entidad == "ARL": entregas_arl.append("N/A")
+                                    if nombre_entidad == "EPS":
+                                        entregas_eps.append("N/A")
+                                    elif nombre_entidad == "EMPLEADOR":
+                                        entregas_empleado.append("N/A")
+                                    elif nombre_entidad == "ARL":
+                                        entregas_arl.append("N/A")
 
+                            # 3. UNIÓN Y CONSOLIDADOR POR CARPETA DE SERVICIO
                             archivos_oficio = [f for f in archivos_adjuntos_afiliado if "OFICIO" in f["nombre"].upper()]
                             otros_adjuntos_afiliado = [f for f in archivos_adjuntos_afiliado if f not in archivos_oficio]
 
@@ -315,6 +441,7 @@ if archivo_subido is not None:
 
                         browser.close()
 
+                    # Guardar archivo Excel con el informe
                     df["Entrega_Afiliado"] = entregas_afiliado
                     df["Entrega_EPS"] = entregas_eps
                     df["Entrega_Empleado"] = entregas_empleado
@@ -324,6 +451,7 @@ if archivo_subido is not None:
                     os.makedirs(os.path.dirname(ruta_excel_salida), exist_ok=True)
                     df.to_excel(ruta_excel_salida, index=False)
 
+                    # Comprimir los resultados en un archivo ZIP
                     ruta_zip_salida = os.path.join(dir_trabajo, "Resultados_PDF.zip")
                     carpeta_a_zipear = os.path.join(dir_trabajo, "Resultados_PDF")
 
