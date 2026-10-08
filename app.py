@@ -30,7 +30,6 @@ st.set_page_config(
 # --- Estilos CSS Personalizados con Paleta Institucional CODESS ---
 st.markdown("""
     <style>
-    /* Variables de Paleta CODESS */
     :root {
         --codess-green: #5C9E31;
         --codess-green-dark: #427521;
@@ -44,10 +43,10 @@ st.markdown("""
         background-color: var(--bg-light);
     }
 
-    /* Encabezado Principal */
+    /* Encabezado Principal Institucional */
     .header-container {
-        background: linear-gradient(135deg, #FFFFFF 0%, #F8FAF9 100%);
-        padding: 2rem 2.5rem;
+        background: #FFFFFF;
+        padding: 1.8rem 2.5rem;
         border-radius: 16px;
         border-left: 8px solid var(--codess-green);
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
@@ -76,7 +75,7 @@ st.markdown("""
         font-weight: 700;
     }
 
-    /* Botón Principal con Degradado Codess */
+    /* Botón Principal */
     .stButton>button {
         width: 100%;
         background: linear-gradient(135deg, var(--codess-green) 0%, var(--codess-green-dark) 100%) !important;
@@ -96,7 +95,7 @@ st.markdown("""
         transform: translateY(-2px);
     }
 
-    /* Métrica Cards Personalizadas */
+    /* Métricas Personalizadas */
     [data-testid="stMetricValue"] {
         color: var(--codess-green) !important;
         font-weight: 800 !important;
@@ -108,10 +107,11 @@ st.markdown("""
         border-right: 2px solid #EAECEE;
     }
 
-    /* Pestañas de Estado */
-    .stStatusWidget {
-        border-radius: 12px !important;
-        border: 1px solid #D5D8DC !important;
+    .logo-img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 8px;
+        margin-bottom: 1rem;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -260,12 +260,19 @@ def descargar_testigo_en_memoria(page, reintentos=3):
 
 # --- Panel Lateral (Sidebar) ---
 with st.sidebar:
+    # Logo oficial de CODESS renderizado
+    st.markdown("""
+        <div style="text-align: center;">
+            <div style="background-color: #ffffff; padding: 10px; border-radius: 10px; border: 1px solid #E0E0E0; margin-bottom: 15px;">
+                <h2 style="color: #5C9E31; margin:0; font-weight:900;">CODESS</h2>
+                <p style="color: #E67E22; margin:0; font-size:11px; font-weight:bold;">DESARROLLO DE LA SEGURIDAD SOCIAL</p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
     if os.path.exists("logo_codess.png"):
         st.image("logo_codess.png", use_container_width=True)
-    else:
-        st.markdown("### 🏢 **CODESS**")
-        
-    st.markdown("<br>", unsafe_allow_html=True)
+
     st.markdown("#### 🛠️ Estado de Servicios")
     drive_service = obtener_servicio_drive()
     conexion_ok = verificar_conexion_drive(drive_service)
@@ -273,14 +280,20 @@ with st.sidebar:
     st.caption("🚀 **Corporación para el Desarrollo de la Seguridad Social**\n\nSistema Automático de Testigos v2.0")
 
 # --- Encabezado Principal Institucional ---
-st.markdown("""
-    <div class="header-container">
-        <div>
-            <h1 class="header-title">Consolidador de Testigos y Evidencias</h1>
-            <p class="header-subtitle">Automatización Inteligente <span class="header-accent">E-Entrega & Google Drive</span></p>
+col_head1, col_head2 = st.columns([3, 1])
+with col_head1:
+    st.markdown("""
+        <div class="header-container">
+            <div>
+                <h1 class="header-title">Consolidador de Testigos y Evidencias</h1>
+                <p class="header-subtitle">Plataforma Automática <span class="header-accent">E-Entrega & Google Drive</span></p>
+            </div>
         </div>
-    </div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+
+with col_head2:
+    if os.path.exists("logo_codess.png"):
+        st.image("logo_codess.png", width=180)
 
 # --- Sección de Entradas de Usuario ---
 col_left, col_right = st.columns(2)
@@ -483,8 +496,8 @@ if archivo_subido is not None:
 
                     with zipfile.ZipFile(ruta_zip_salida, 'w', zipfile.ZIP_DEFLATED) as zipf:
                         for root, dirs, files in os.walk(carpeta_a_zipear):
-                            for file in files:
-                                path_absoluto = os.path.join(root, file)
+                            for file" in files:
+                                path_absoluto = os.path.join(root, file")
                                 path_relativo = os.path.relpath(path_absoluto, carpeta_a_zipear)
                                 zipf.write(path_absoluto, arcname=path_relativo)
 
