@@ -116,10 +116,10 @@ URL_LOGIN_EENTREGA = "https://codess.e-entrega.co/index.php"
 NOMBRE_LOGO = "Logo Codess.png"
 DIR_PERSISTENTE = os.path.join(tempfile.gettempdir(), "Resultados_PDF_Persistentes")
 
-# Directorio de persistencia para no perder archivos en caídas
+# Crear carpeta de persistencia si no existe
 os.makedirs(DIR_PERSISTENTE, exist_ok=True)
 
-# --- Conexión a Google Drive API ---
+# --- Conexión y Diagnóstico de Google Drive API ---
 
 def obtener_servicio_drive():
     if "google_oauth" in st.secrets:
@@ -170,7 +170,7 @@ def buscar_y_descargar_drive_api(service, codigo_guia):
             corpora="allDrives",
             includeItemsFromAllDrives=True,
             supportsAllDrives=True,
-            pageSize=1
+            pageSize=5
         ).execute()
 
         archivos = resultados.get("files", [])
@@ -180,7 +180,7 @@ def buscar_y_descargar_drive_api(service, codigo_guia):
 
             request = service.files().get_media(fileId=file_id)
             stream_descarga = io.BytesIO()
-            downloader = MediaIoBaseDownload(stream_descarga, request, chunksize=1024*1024)
+            downloader = MediaIoBaseDownload(stream_descarga, request)
             
             done = False
             while not done:
@@ -199,7 +199,7 @@ def buscar_varias_guias_drive_paralelo(service, lista_guias):
         return {}
     
     resultados = {}
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    with ThreadPoolExecutor(max_workers=5) as executor:
         futuros = {
             executor.submit(buscar_y_descargar_drive_api, service, guia): guia 
             for guia in lista_guias if es_guia_valida(guia) and len(limpiar_guia(guia)) > 6
@@ -236,13 +236,13 @@ def limpiar_nombre_carpeta(nombre):
 
 def esperar_modal_generando_testigo(page):
     try:
-        page.wait_for_selector('text="Generando testigo, espera un momento..."', state="detached", timeout=10000)
+        page.wait_for_selector('text="Generando testigo, espera un momento..."', state="detached", timeout=20000)
     except Exception:
         pass
 
 def obtener_evento_tabla(page):
     try:
-        page.wait_for_selector("#tablaestados tbody tr", timeout=3000)
+        page.wait_for_selector("#tablaestados tbody tr", timeout=5000)
         texto = page.locator("#tablaestados tbody tr").first.locator("td").nth(4).inner_text().strip()
         return texto if texto else "Sin Estado"
     except Exception:
@@ -250,7 +250,8 @@ def obtener_evento_tabla(page):
 
 def consultar_guia_eentrega(page, guia):
     try:
-        page.wait_for_selector("#message", state="attached", timeout=8000)
+        page.bring_to_front()
+        page.wait_for_selector("#message", state="visible", timeout=10000)
         page.locator("#message").fill(guia)
         page.locator("#btn_Buscar").click()
         return True
@@ -260,8 +261,8 @@ def consultar_guia_eentrega(page, guia):
 def descargar_testigo_en_memoria(page, reintentos=2):
     for intento in range(1, reintentos + 1):
         try:
-            page.wait_for_selector("#ToolTables_tablaestados_1", state="visible", timeout=4000)
-            with page.expect_download(timeout=15000) as download_info:
+            page.wait_for_selector("#ToolTables_tablaestados_1", state="visible", timeout=6000)
+            with page.expect_download(timeout=25000) as download_info:
                 page.locator("#ToolTables_tablaestados_1").click()
 
             esperar_modal_generando_testigo(page)
@@ -298,7 +299,7 @@ with st.sidebar:
     st.markdown("---")
     st.caption("🚀 **Corporación para el Desarrollo de la Seguridad Social**\n\nSistema Automático de Testigos v2.0")
 
-# --- Encabezado Principal Adaptativo Nativamente ---
+# --- Encabezado Principal Adaptativo Natively ---
 if os.path.exists(NOMBRE_LOGO):
     import base64
     with open(NOMBRE_LOGO, "rb") as image_file:
@@ -317,7 +318,7 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# --- REVISIÓN DE ARCHIVOS SALVADOS TRAS DESCONEXIÓN O CORTE ---
+# --- PANEL DE RECUPERACIÓN EN CASO DE REINICIO DE PÁGINA ---
 archivos_previos = []
 for root, dirs, files in os.walk(DIR_PERSISTENTE):
     for f in files:
@@ -325,7 +326,7 @@ for root, dirs, files in os.walk(DIR_PERSISTENTE):
             archivos_previos.append(os.path.join(root, f))
 
 if archivos_previos:
-    st.info(f"📂 **Recuperación Automática de Sesión:** Se encontraron **{len(archivos_previos)} PDFs** procesados anteriormente en disco.")
+    st.info(f"📂 **Recuperación Automática:** Se detectaron **{len(archivos_previos)} PDFs** procesados antes de la interrupción.")
     ruta_zip_recuperacion = os.path.join(tempfile.gettempdir(), "Recuperacion_Parcial.zip")
     generar_zip_de_carpeta(DIR_PERSISTENTE, ruta_zip_recuperacion)
     
@@ -333,7 +334,7 @@ if archivos_previos:
         col_rec1, col_rec2 = st.columns([2, 1])
         with col_rec1:
             st.download_button(
-                label="🩹 Descargar Lote Salvado Hasta la Última Interrupción (.ZIP)",
+                label="🩹 Descargar PDFs Salvados de la Ejecución Anterior (.ZIP)",
                 data=f_zip_rec.read(),
                 file_name="Archivos_Salvados_CODESS.zip",
                 mime="application/zip"
@@ -381,10 +382,10 @@ if archivo_subido is not None:
 
                 entregas_afiliado, entregas_eps, entregas_empleado, entregas_arl = [], [], [], []
 
-                status_container = st.status("⚡ **Ejecutando proceso de extracción...**", expanded=True)
+                status_container = st.status("⚡ **Ejecutando proceso optimizado de extracción...**", expanded=True)
                 
                 with status_container:
-                    st.write("🌐 Iniciando motor de extracción Chromium...")
+                    st.write("🌐 Iniciando navegador seguro Chromium...")
                     progress_bar = st.progress(0)
 
                     with sync_playwright() as p:
@@ -395,8 +396,8 @@ if archivo_subido is not None:
                         context = browser.new_context(accept_downloads=True)
                         page_eentrega = context.new_page()
 
-                        # Bloqueo de imágenes y fuentes
-                        page_eentrega.route("**/*.{png,jpg,jpeg,gif,svg,woff,woff2,ttf,eot}", lambda route: route.abort())
+                        # Bloquear fuentes pesadas en Playwright para mejorar tiempos
+                        page_eentrega.route("**/*.{woff,woff2,ttf,eot}", lambda route: route.abort())
 
                         # Login en E-Entrega
                         page_eentrega.goto(URL_LOGIN_EENTREGA)
@@ -407,7 +408,7 @@ if archivo_subido is not None:
                         page_eentrega.wait_for_selector('span[lan="MENU_STATUS"]', timeout=30000)
                         page_eentrega.locator('span[lan="MENU_STATUS"]').click()
                         page_eentrega.get_by_text("Filtros avanzados").click()
-                        page_eentrega.wait_for_selector("#message", state="attached", timeout=20000)
+                        page_eentrega.wait_for_selector("#message", state="visible", timeout=15000)
 
                         total_filas = len(df)
                         for idx, row in df.iterrows():
@@ -418,21 +419,8 @@ if archivo_subido is not None:
                             GUIA_ARL = str(row.get("GUIA ARL", "")).strip()
                             NOMBRE_SERVICIO = limpiar_nombre_carpeta(row.get("SERVICIO", ""))
 
-                            # Si el archivo PDF ya fue generado anteriormente, omitir búsqueda
-                            carpeta_servicio_pers = os.path.join(DIR_PERSISTENTE, NOMBRE_SERVICIO)
-                            os.makedirs(carpeta_servicio_pers, exist_ok=True)
-                            ruta_pdf_pers = os.path.join(carpeta_servicio_pers, f"{NUMERO_DOCUMENTO}.pdf")
-
-                            if os.path.exists(ruta_pdf_pers):
-                                st.write(f"⏩ Registro **{idx + 1}/{total_filas}** — Documento: **{NUMERO_DOCUMENTO}** (Ya procesado anteriormente)")
-                                progress_bar.progress((idx + 1) / total_filas)
-                                continue
-
                             st.write(f"🔎 Procesando registro **{idx + 1}/{total_filas}** — Documento: **{NUMERO_DOCUMENTO}**")
                             progress_bar.progress((idx + 1) / total_filas)
-
-                            if idx > 0 and idx % 20 == 0:
-                                gc.collect()
 
                             if not es_guia_valida(GUIA_AFILIADO):
                                 entregas_afiliado.append("N/A - Guía Inválida")
@@ -441,7 +429,7 @@ if archivo_subido is not None:
                                 entregas_arl.append("N/A - Omitido por Afiliado")
                                 continue
 
-                            # Búsqueda en paralelo en Google Drive
+                            # Búsqueda en paralelo de todas las guías largas del registro en Google Drive
                             guias_registro = [GUIA_AFILIADO, GUIA_EPS, GUIA_EMPLEADOR, GUIA_ARL]
                             resultados_drive = buscar_varias_guias_drive_paralelo(drive_service, guias_registro)
 
@@ -463,12 +451,12 @@ if archivo_subido is not None:
 
                                     try:
                                         page_eentrega.locator(".btnVerMensaje").first.click()
-                                        page_eentrega.wait_for_selector(".modal-body, #modalMensaje, .modal-content", state="visible", timeout=4000)
+                                        page_eentrega.wait_for_selector(".modal-body, #modalMensaje, .modal-content", state="visible", timeout=5000)
 
                                         archivos_adjuntos = page_eentrega.locator('text=/.+\\.pdf/i')
                                         for i in range(archivos_adjuntos.count()):
                                             try:
-                                                with page_eentrega.expect_download(timeout=12000) as download_info:
+                                                with page_eentrega.expect_download(timeout=15000) as download_info:
                                                     archivos_adjuntos.nth(i).click()
 
                                                 download = download_info.value
@@ -536,26 +524,46 @@ if archivo_subido is not None:
                                     if item and item.get("stream"):
                                         merger.append(item["stream"])
 
-                                # Guardar PDF consolidado en el directorio de persistencia
+                                # Guardar tanto en la carpeta de trabajo como en el directorio persistente
+                                carpeta_servicio = os.path.join(dir_trabajo, "Resultados_PDF", NOMBRE_SERVICIO)
+                                os.makedirs(carpeta_servicio, exist_ok=True)
+                                ruta_pdf_final = os.path.join(carpeta_servicio, f"{NUMERO_DOCUMENTO}.pdf")
+                                merger.write(ruta_pdf_final)
+
+                                carpeta_servicio_pers = os.path.join(DIR_PERSISTENTE, NOMBRE_SERVICIO)
+                                os.makedirs(carpeta_servicio_pers, exist_ok=True)
+                                ruta_pdf_pers = os.path.join(carpeta_servicio_pers, f"{NUMERO_DOCUMENTO}.pdf")
                                 merger.write(ruta_pdf_pers)
+
                                 merger.close()
 
                         browser.close()
 
-                    # Guardar reporte Excel
-                    df["Entrega_Afiliado"] = entregas_afiliado[:len(df)]
-                    df["Entrega_EPS"] = entregas_eps[:len(df)]
-                    df["Entrega_Empleado"] = entregas_empleado[:len(df)]
-                    df["Entrega_ARL"] = entregas_arl[:len(df)]
+                    # Guardar informe Excel
+                    df["Entrega_Afiliado"] = entregas_afiliado
+                    df["Entrega_EPS"] = entregas_eps
+                    df["Entrega_Empleado"] = entregas_empleado
+                    df["Entrega_ARL"] = entregas_arl
 
-                    ruta_excel_salida = os.path.join(DIR_PERSISTENTE, "Resultado_Entregas.xlsx")
+                    ruta_excel_salida = os.path.join(dir_trabajo, "Resultados_PDF", "Resultado_Entregas.xlsx")
+                    os.makedirs(os.path.dirname(ruta_excel_salida), exist_ok=True)
                     df.to_excel(ruta_excel_salida, index=False)
 
-                    # Generar ZIP final desde el directorio persistente
-                    ruta_zip_salida = os.path.join(tempfile.gettempdir(), "Resultados_PDF_CODESS.zip")
-                    generar_zip_de_carpeta(DIR_PERSISTENTE, ruta_zip_salida)
+                    # Guardar también copia del Excel en la carpeta de recuperación
+                    df.to_excel(os.path.join(DIR_PERSISTENTE, "Resultado_Entregas.xlsx"), index=False)
 
-                status_container.update(label="🎉 **¡Proceso completado con éxito!**", state="complete", expanded=False)
+                    # Comprimir a ZIP
+                    ruta_zip_salida = os.path.join(dir_trabajo, "Resultados_PDF.zip")
+                    carpeta_a_zipear = os.path.join(dir_trabajo, "Resultados_PDF")
+
+                    with zipfile.ZipFile(ruta_zip_salida, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                        for root, dirs, files in os.walk(carpeta_a_zipear):
+                            for file in files:
+                                path_absoluto = os.path.join(root, file)
+                                path_relativo = os.path.relpath(path_absoluto, carpeta_a_zipear)
+                                zipf.write(path_absoluto, arcname=path_relativo)
+
+                status_container.update(label="⚡ **¡Proceso completado a máxima velocidad y estabilidad!**", state="complete", expanded=False)
 
                 # --- Resumen e Indicadores Visuales CODESS ---
                 st.subheader("📊 Indicadores del Procesamiento")
