@@ -8,7 +8,6 @@ import pandas as pd
 from pypdf import PdfWriter
 import streamlit as st
 
-# Instalación de dependencias del sistema
 try:
     subprocess.run(["playwright", "install", "chromium"], check=True)
 except Exception:
@@ -244,5 +243,113 @@ if archivo_subido is not None:
 
                                     archivos_adjuntos = page_eentrega.locator('text=/.+\\.pdf/i')
                                     for i in range(archivos_adjuntos.count()):
-                                        with page_eentrega.expect_download(timeout=30000) as download_info:
-                                            archivos_adjuntos.nth(i).click()
+                                        try:
+                                            with page_eentrega.expect_download(timeout=30000) as download_info:
+                                                archivos_adjuntos.nth(i).click()
+
+                                            download = download_info.value
+                                            with open(download.path(), "rb") as f:
+                                                bytes_pdf = f.read()
+
+                                            archivos_adjuntos_afiliado.append({
+                                                "nombre": download.suggested_filename,
+                                                "stream": io.BytesIO(bytes_pdf)
+                                            })
+                                        except Exception:
+                                            pass
+
+                                    page_eentrega.get_by_role("button", name="Aceptar").click()
+                                    page_eentrega.wait_for_timeout(500)
+                                except Exception:
+                                    pass
+
+                                testigo_afiliado = descargar_testigo_en_memoria(page_eentrega)
+
+                            guia_testigos = [("EPS", GUIA_EPS), ("EMPLEADOR", GUIA_EMPLEADOR), ("ARL", GUIA_ARL)]
+                            otros_testigos = []
+
+                            for nombre_entidad, codigo_guia in guia_testigos:
+                                if es_guia_valida(codigo_guia):
+                                    guia_limpia = limpiar_guia(codigo_guia)
+                                    if len(guia_limpia) > 6:
+                                        pdf_drive = buscar_y_descargar_drive_api(drive_service, guia_limpia)
+                                        if pdf_drive:
+                                            otros_testigos.append(pdf_drive)
+                                            txt_estado = "Encontrado en Drive"
+                                        else:
+                                            txt_estado = "No encontrado en Drive"
+                                    else:
+                                        page_eentrega.bring_to_front()
+                                        page_eentrega.locator("#message").fill(guia_limpia)
+                                        page_eentrega.locator("#btn_Buscar").click()
+                                        page_eentrega.wait_for_load_state("networkidle")
+
+                                        txt_estado = obtener_evento_tabla(page_eentrega)
+
+                                        testigo_entidad = descargar_testigo_en_memoria(page_eentrega)
+                                        if testigo_entidad:
+                                            otros_testigos.append(testigo_entidad)
+
+                                    if nombre_entidad == "EPS": entregas_eps.append(txt_estado)
+                                    elif nombre_entidad == "EMPLEADOR": entregas_empleado.append(txt_estado)
+                                    elif nombre_entidad == "ARL": entregas_arl.append(txt_estado)
+                                else:
+                                    if nombre_entidad == "EPS": entregas_eps.append("N/A")
+                                    elif nombre_entidad == "EMPLEADOR": entregas_empleado.append("N/A")
+                                    elif nombre_entidad == "ARL": entregas_arl.append("N/A")
+
+                            archivos_oficio = [f for f in archivos_adjuntos_afiliado if "OFICIO" in f["nombre"].upper()]
+                            otros_adjuntos_afiliado = [f for f in archivos_adjuntos_afiliado if f not in archivos_oficio]
+
+                            lista_ordenada_streams = (
+                                archivos_oficio +
+                                otros_adjuntos_afiliado +
+                                ([testigo_afiliado] if testigo_afiliado else []) +
+                                otros_testigos
+                            )
+
+                            if lista_ordenada_streams:
+                                merger = PdfWriter()
+                                for item in lista_ordenada_streams:
+                                    if item and item.get("stream"):
+                                        merger.append(item["stream"])
+
+                                carpeta_servicio = os.path.join(dir_trabajo, "Resultados_PDF", NOMBRE_SERVICIO)
+                                os.makedirs(carpeta_servicio, exist_ok=True)
+
+                                ruta_pdf_final = os.path.join(carpeta_servicio, f"{NUMERO_DOCUMENTO}.pdf")
+                                merger.write(ruta_pdf_final)
+                                merger.close()
+
+                        browser.close()
+
+                    # Guardar informe Excel
+                    df["Entrega_Afiliado"] = entregas_afiliado
+                    df["Entrega_EPS"] = entregas_eps
+                    df["Entrega_Empleado"] = entregas_empleado
+                    df["Entrega_ARL"] = entregas_arl
+
+                    ruta_excel_salida = os.path.join(dir_trabajo, "Resultados_PDF", "Resultado_Entregas.xlsx")
+                    os.makedirs(os.path.dirname(ruta_excel_salida), exist_ok=True)
+                    df.to_excel(ruta_excel_salida, index=False)
+
+                    # Comprimir a ZIP
+                    ruta_zip_salida = os.path.join(dir_trabajo, "Resultados_PDF.zip")
+                    carpeta_a_zipear = os.path.join(dir_trabajo, "Resultados_PDF")
+
+                    with zipfile.ZipFile(ruta_zip_salida, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                        for root, dirs, files in os.walk(carpeta_a_zipear):
+                            for file in files:
+                                path_absoluto = os.path.join(root, file)
+                                path_relativo = os.path.relpath(path_absoluto, carpeta_a_zipear)
+                                zipf.write(path_absoluto, arcname=path_relativo)
+
+                st.success("🎉 ¡Proceso finalizado con éxito!")
+
+                with open(ruta_zip_salida, "rb") as f_zip:
+                    st.download_button(
+                        label="📦 Descargar Resultados_PDF.zip",
+                        data=f_zip.read(),
+                        file_name="Resultados_PDF.zip",
+                        mime="application/zip"
+                    )
