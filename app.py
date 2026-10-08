@@ -353,7 +353,7 @@ if archivo_subido is not None:
                         context = browser.new_context(accept_downloads=True)
                         page_eentrega = context.new_page()
 
-                        # Bloquear fuentes pesadas en Playwright para mejorar tiempos sin romper estilos esenciales
+                        # Bloquear fuentes pesadas en Playwright para mejorar tiempos
                         page_eentrega.route("**/*.{woff,woff2,ttf,eot}", lambda route: route.abort())
 
                         # Login en E-Entrega
@@ -497,4 +497,35 @@ if archivo_subido is not None:
                     df["Entrega_ARL"] = entregas_arl
 
                     ruta_excel_salida = os.path.join(dir_trabajo, "Resultados_PDF", "Resultado_Entregas.xlsx")
-                    os.makedirs(os.path.dirname(
+                    os.makedirs(os.path.dirname(ruta_excel_salida), exist_ok=True)
+                    df.to_excel(ruta_excel_salida, index=False)
+
+                    # Comprimir a ZIP
+                    ruta_zip_salida = os.path.join(dir_trabajo, "Resultados_PDF.zip")
+                    carpeta_a_zipear = os.path.join(dir_trabajo, "Resultados_PDF")
+
+                    with zipfile.ZipFile(ruta_zip_salida, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                        for root, dirs, files in os.walk(carpeta_a_zipear):
+                            for file in files:
+                                path_absoluto = os.path.join(root, file)
+                                path_relativo = os.path.relpath(path_absoluto, carpeta_a_zipear)
+                                zipf.write(path_absoluto, arcname=path_relativo)
+
+                status_container.update(label="⚡ **¡Proceso completado a máxima velocidad y estabilidad!**", state="complete", expanded=False)
+
+                # --- Resumen e Indicadores Visuales CODESS ---
+                st.subheader("📊 Indicadores del Procesamiento")
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Total Registros Procesados", len(df))
+                m2.metric("Archivos Hallados en Drive", entregas_empleado.count("Encontrado en Drive") + entregas_afiliado.count("Encontrado en Drive"))
+                m3.metric("Testigos Exitosos E-Entrega", total_filas - entregas_afiliado.count("No encontrado en Drive"))
+
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                with open(ruta_zip_salida, "rb") as f_zip:
+                    st.download_button(
+                        label="📦 Descargar Resultados Consolidados (.ZIP)",
+                        data=f_zip.read(),
+                        file_name="Resultados_PDF_CODESS.zip",
+                        mime="application/zip"
+                    )
