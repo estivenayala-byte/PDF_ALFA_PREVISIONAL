@@ -73,12 +73,9 @@ st.markdown("""
         font-weight: 700;
     }
 
-    /* Estilo para limpiar la imagen y remover el marco negro */
+    /* Estilo limpio para la imagen dentro de la tarjeta */
     div[data-testid="stImage"] img {
-        border-radius: 8px;
-        mix-blend-mode: screen; /* Oculta el fondo negro si el fondo de la imagen es negro con contenido blanco */
-        filter: invert(1) hue-rotate(180deg); /* Mantiene la visibilidad del contenido */
-        max-height: 80px;
+        max-height: 75px;
         object-fit: contain;
     }
 
@@ -267,19 +264,21 @@ with st.sidebar:
     st.markdown("---")
     st.caption("🚀 **Corporación para el Desarrollo de la Seguridad Social**\n\nSistema Automático de Testigos v2.0")
 
-# --- Encabezado Principal Integrado en Tarjeta Única ---
-with st.container():
-    st.markdown('<div class="header-card">', unsafe_allow_html=True)
-    c1, c2 = st.columns([1, 4])
-    with c1:
-        if os.path.exists(NOMBRE_LOGO):
-            st.image(NOMBRE_LOGO, width=150)
-    with c2:
-        st.markdown("""
-            <h1 class="header-title">Consolidador de Testigos y Evidencias</h1>
-            <p class="header-subtitle">Plataforma Automática <span class="header-accent">E-Entrega & Google Drive</span></p>
-        """, unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+# --- Encabezado Principal Integrado dentro de la Tarjeta Blanca ---
+header_container = st.container()
+
+with header_container:
+    with st.container():
+        # Usamos columnas internas dentro de la misma tarjeta
+        c1, c2 = st.columns([1, 4])
+        with c1:
+            if os.path.exists(NOMBRE_LOGO):
+                st.image(NOMBRE_LOGO, use_container_width=True)
+        with c2:
+            st.markdown("""
+                <h1 class="header-title">Consolidador de Testigos y Evidencias</h1>
+                <p class="header-subtitle">Plataforma Automática <span class="header-accent">E-Entrega & Google Drive</span></p>
+            """, unsafe_allow_html=True)
 
 # --- Sección de Entradas de Usuario ---
 col_left, col_right = st.columns(2)
