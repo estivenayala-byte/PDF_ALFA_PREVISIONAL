@@ -27,7 +27,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- Estilos CSS Personalizados con Paleta Institucional CODESS ---
+# --- Estilos CSS Adaptativos (Modo Claro & Oscuro) ---
 st.markdown("""
     <style>
     :root {
@@ -35,33 +35,46 @@ st.markdown("""
         --codess-green-dark: #427521;
         --codess-orange: #E67E22;
         --codess-orange-dark: #D35400;
-        --codess-gray: #555555;
-        --bg-light: #F4F6F7;
+        
+        /* Paleta Modo Claro por defecto */
+        --card-bg: #FFFFFF;
+        --card-border: #E2E8F0;
+        --text-primary: #1E293B;
+        --text-secondary: #64748B;
+        --logo-blend: multiply;
     }
 
-    .stApp {
-        background-color: var(--bg-light);
+    /* Compatibilidad Automática con Modo Oscuro de Streamlit / Sistema */
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --card-bg: #1E293B;
+            --card-border: #334155;
+            --text-primary: #F8FAFC;
+            --text-secondary: #CBD5E1;
+            --logo-blend: normal;
+        }
     }
 
-    /* Encabezado Único: Tarjeta contenedora con barra verde y alineación centrada */
+    /* Encabezado Único Adaptativo */
     .header-card {
-        background: #FFFFFF;
+        background-color: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-left: 8px solid var(--codess-green);
         padding: 1.5rem 2rem;
         border-radius: 16px;
-        border-left: 8px solid var(--codess-green);
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
         margin-bottom: 2rem;
         display: flex;
-        align-items: center; /* Centra la imagen y el texto en el eje vertical */
+        align-items: center;
         gap: 2rem;
     }
 
-    /* Estilo de la imagen del Logo dentro del contenedor */
     .header-logo-img {
         max-height: 65px;
         width: auto;
         object-fit: contain;
-        mix-blend-mode: multiply; /* Elimina cualquier artefacto de fondo */
+        mix-blend-mode: var(--logo-blend);
+        background-color: transparent;
     }
 
     .header-text-container {
@@ -71,7 +84,7 @@ st.markdown("""
     }
 
     .header-title {
-        color: #2C3E50;
+        color: var(--text-primary) !important;
         font-size: 2.1rem;
         font-weight: 800;
         margin: 0;
@@ -79,22 +92,27 @@ st.markdown("""
     }
 
     .header-subtitle {
-        color: var(--codess-gray);
+        color: var(--text-secondary) !important;
         font-size: 1rem;
         margin-top: 0.4rem;
         font-weight: 500;
     }
 
     .header-accent {
-        color: var(--codess-orange);
+        color: var(--codess-orange) !important;
         font-weight: 700;
+    }
+
+    /* Estilos para encabezados de sección fuera de la tarjeta */
+    h4 {
+        color: var(--text-primary) !important;
     }
 
     /* Botón Principal */
     .stButton>button {
         width: 100%;
         background: linear-gradient(135deg, var(--codess-green) 0%, var(--codess-green-dark) 100%) !important;
-        color: white !important;
+        color: #FFFFFF !important;
         font-weight: 700 !important;
         font-size: 1.05rem !important;
         padding: 0.8rem 1.5rem !important;
@@ -114,12 +132,6 @@ st.markdown("""
     [data-testid="stMetricValue"] {
         color: var(--codess-green) !important;
         font-weight: 800 !important;
-    }
-
-    /* Sidebar Estilizada */
-    [data-testid="stSidebar"] {
-        background-color: #FFFFFF;
-        border-right: 2px solid #EAECEE;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -275,7 +287,7 @@ with st.sidebar:
     st.markdown("---")
     st.caption("🚀 **Corporación para el Desarrollo de la Seguridad Social**\n\nSistema Automático de Testigos v2.0")
 
-# --- Encabezado Principal en una Única Estructura Flexbox ---
+# --- Encabezado Principal Flexbox Adaptativo ---
 if os.path.exists(NOMBRE_LOGO):
     import base64
     with open(NOMBRE_LOGO, "rb") as image_file:
