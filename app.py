@@ -43,42 +43,51 @@ st.markdown("""
         background-color: var(--bg-light);
     }
 
-    /* Encabezado Principal Institucional */
-    .header-container {
+    /* Encabezado Único y Contenedor Integrado */
+    .header-card {
         background: #FFFFFF;
-        padding: 1.5rem 2rem;
+        padding: 1.8rem 2.5rem;
         border-radius: 16px;
         border-left: 8px solid var(--codess-green);
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
         margin-bottom: 2rem;
+        display: flex;
+        align-items: center;
+        gap: 2rem;
+    }
+
+    /* Recorte y eliminación del fondo negro de la imagen */
+    .header-logo-img {
+        height: 65px;
+        width: auto;
+        object-fit: cover;
+        object-position: 85% 50%; /* Enfoca el recuadro blanco y elimina el marco negro circundante */
+        border-radius: 8px;
+    }
+
+    .header-text-container {
+        display: flex;
+        flex-direction: column;
     }
 
     .header-title {
         color: #2C3E50;
-        font-size: 2rem;
+        font-size: 2.1rem;
         font-weight: 800;
-        margin: 0.5rem 0 0 0;
+        margin: 0;
+        line-height: 1.2;
     }
 
     .header-subtitle {
         color: var(--codess-gray);
         font-size: 1rem;
-        margin-top: 0.3rem;
+        margin-top: 0.4rem;
         font-weight: 500;
     }
 
     .header-accent {
         color: var(--codess-orange);
         font-weight: 700;
-    }
-
-    /* Ajuste de Imagen del Logo sin Fondo Negro */
-    .logo-container img {
-        max-height: 55px !important;
-        width: auto !important;
-        object-fit: contain;
-        mix-blend-mode: multiply; /* Remueve los bordes/fondos oscuros al fusionarse con blanco */
-        filter: contrast(110%);
     }
 
     /* Botón Principal */
@@ -260,36 +269,33 @@ def descargar_testigo_en_memoria(page, reintentos=3):
 
 # --- Panel Lateral (Sidebar) ---
 with st.sidebar:
-    st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-    if os.path.exists(NOMBRE_LOGO):
-        st.image(NOMBRE_LOGO, width=170)
-    else:
-        st.markdown("""
-            <div style="background-color: #ffffff; padding: 10px; border-radius: 10px; border: 1px solid #E0E0E0; margin-bottom: 15px;">
-                <h2 style="color: #5C9E31; margin:0; font-weight:900;">CODESS</h2>
-            </div>
-        """, unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
     st.markdown("#### 🛠️ Estado de Servicios")
     drive_service = obtener_servicio_drive()
     conexion_ok = verificar_conexion_drive(drive_service)
     st.markdown("---")
     st.caption("🚀 **Corporación para el Desarrollo de la Seguridad Social**\n\nSistema Automático de Testigos v2.0")
 
-# --- Encabezado Principal con Logo en la Esquina Superior Izquierda ---
-st.markdown('<div class="header-container">', unsafe_allow_html=True)
-
+# --- Encabezado Principal Integrado HTML ---
 if os.path.exists(NOMBRE_LOGO):
-    st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-    st.image(NOMBRE_LOGO, width=220)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-st.markdown("""
-        <h1 class="header-title">Consolidador de Testigos y Evidencias</h1>
-        <p class="header-subtitle">Plataforma Automática <span class="header-accent">E-Entrega & Google Drive</span></p>
-    </div>
-""", unsafe_allow_html=True)
+    # Genera la tarjeta con el logo y título integrados limpiamente
+    st.markdown(f"""
+        <div class="header-card">
+            <img src="app/static/{NOMBRE_LOGO}" class="header-logo-img" alt="Logo CODESS">
+            <div class="header-text-container">
+                <h1 class="header-title">Consolidador de Testigos y Evidencias</h1>
+                <p class="header-subtitle">Plataforma Automática <span class="header-accent">E-Entrega & Google Drive</span></p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+else:
+    st.markdown("""
+        <div class="header-card">
+            <div class="header-text-container">
+                <h1 class="header-title">Consolidador de Testigos y Evidencias</h1>
+                <p class="header-subtitle">Plataforma Automática <span class="header-accent">E-Entrega & Google Drive</span></p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
 # --- Sección de Entradas de Usuario ---
 col_left, col_right = st.columns(2)
