@@ -8,6 +8,7 @@ import pandas as pd
 from pypdf import PdfWriter
 import streamlit as st
 
+# Instalación de dependencias del sistema (Chromium)
 try:
     subprocess.run(["playwright", "install", "chromium"], check=True)
 except Exception:
@@ -26,36 +27,63 @@ st.set_page_config(
 
 URL_LOGIN_EENTREGA = "https://codess.e-entrega.co/index.php"
 
-# --- Conexión con Google Drive API usando User OAuth Credentials ---
+# --- Conexión y Diagnóstico de Google Drive API ---
 
 def obtener_servicio_drive():
-    """Autentica a través de OAuth Refresh Token utilizando los permisos del usuario corporativo."""
+    """Autentica con OAuth2 utilizando el refresh_token del usuario corporativo."""
     if "google_oauth" in st.secrets:
-        creds_info = st.secrets["google_oauth"]
-        creds = Credentials(
-            token=None,
-            refresh_token=creds_info["refresh_token"],
-            token_uri=creds_info["token_uri"],
-            client_id=creds_info["client_id"],
-            client_secret=creds_info["client_secret"],
-            scopes=["https://www.googleapis.com/auth/drive.readonly"]
-        )
-        return build("drive", "v3", credentials=creds)
+        try:
+            creds_info = st.secrets["google_oauth"]
+            creds = Credentials(
+                token=None,
+                refresh_token=creds_info["refresh_token"],
+                token_uri=creds_info.get("token_uri", "https://oauth2.googleapis.com/token"),
+                client_id=creds_info["client_id"],
+                client_secret=creds_info["client_secret"],
+                scopes=["https://www.googleapis.com/auth/drive.readonly"]
+            )
+            return build("drive", "v3", credentials=creds)
+        except Exception as e:
+            st.sidebar.error(f"Error cargando credenciales: {e}")
+            return None
     return None
 
+def verificar_conexion_drive(service):
+    """Verifica en el sidebar si la conexión con Drive está lista y funcionando."""
+    if service:
+        try:
+            about = service.about().get(fields="user").execute()
+            email_conectado = about.get("user", {}).get("emailAddress", "Usuario")
+            st.sidebar.success(f"🟢 Conectado a Drive como:\n**{email_conectado}**")
+            return True
+        except Exception as e:
+            st.sidebar.error(f"🔴 Error al conectar con Drive API:\n{e}")
+            return False
+    else:
+        st.sidebar.warning("⚠️ No se configuró [google_oauth] en Secrets.")
+        return False
+
 def buscar_y_descargar_drive_api(service, codigo_guia):
-    """Busca y descarga un archivo PDF en cualquier Unidad Compartida usando permisos del usuario."""
-    guia_limpia = str(codigo_guia).strip().replace(" ", "")
-    if not service or not guia_limpia:
+    """Busca y descarga un archivo PDF en carpetas y Unidades Compartidas."""
+    if not service or not codigo_guia:
+        return None
+
+    # Limpiar número de guía para la búsqueda
+    guia_limpia = re.sub(r'[^0-9a-zA-Z]', '', str(codigo_guia).strip())
+    if not guia_limpia:
         return None
 
     try:
+        # Busca coincidencia de la guía en cualquier parte del nombre del archivo PDF
         query = f"name contains '{guia_limpia}' and mimeType = 'application/pdf' and trashed = false"
+        
         resultados = service.files().list(
             q=query,
             fields="files(id, name)",
+            corpora="allDrives",
             includeItemsFromAllDrives=True,
-            supportsAllDrives=True
+            supportsAllDrives=True,
+            pageSize=10
         ).execute()
 
         archivos = resultados.get("files", [])
@@ -74,8 +102,8 @@ def buscar_y_descargar_drive_api(service, codigo_guia):
             stream_descarga.seek(0)
             return {"nombre": nombre_archivo, "stream": stream_descarga}
 
-    except Exception:
-        pass
+    except Exception as e:
+        st.write(f"⚠️ Error al consultar la guía {guia_limpia} en Drive: {e}")
 
     return None
 
@@ -141,7 +169,11 @@ def descargar_testigo_en_memoria(page, reintentos=3):
                 pass
     return None
 
-# --- Interfaz Web en Streamlit ---
+# --- Interfaz Web de Streamlit ---
+
+st.sidebar.title("🛠️ Estado de la API")
+drive_service = obtener_servicio_drive()
+conexion_ok = verificar_conexion_drive(drive_service)
 
 st.title("📑 Generador Automático de Testigos")
 st.write("Ingresa tus credenciales de E-Entrega y sube el archivo con las guías.")
@@ -175,9 +207,8 @@ if archivo_subido is not None:
 
                 entregas_afiliado, entregas_eps, entregas_empleado, entregas_arl = [], [], [], []
 
-                with st.spinner("⏳ Procesando guías y consultando Drive... Por favor espera."):
+                with st.spinner("⏳ Procesando guías en E-Entrega y consultando Drive... Por favor espera."):
                     progress_bar = st.progress(0)
-                    drive_service = obtener_servicio_drive()
 
                     with sync_playwright() as p:
                         browser = p.chromium.launch(
