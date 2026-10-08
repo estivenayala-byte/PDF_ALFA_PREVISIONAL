@@ -43,31 +43,14 @@ st.markdown("""
         background-color: var(--bg-light);
     }
 
-    /* Encabezado Único y Contenedor Integrado */
+    /* Encabezado Único */
     .header-card {
         background: #FFFFFF;
-        padding: 1.8rem 2.5rem;
+        padding: 1.5rem 2rem;
         border-radius: 16px;
         border-left: 8px solid var(--codess-green);
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
         margin-bottom: 2rem;
-        display: flex;
-        align-items: center;
-        gap: 2rem;
-    }
-
-    /* Recorte y eliminación del fondo negro de la imagen */
-    .header-logo-img {
-        height: 65px;
-        width: auto;
-        object-fit: cover;
-        object-position: 85% 50%; /* Enfoca el recuadro blanco y elimina el marco negro circundante */
-        border-radius: 8px;
-    }
-
-    .header-text-container {
-        display: flex;
-        flex-direction: column;
     }
 
     .header-title {
@@ -88,6 +71,15 @@ st.markdown("""
     .header-accent {
         color: var(--codess-orange);
         font-weight: 700;
+    }
+
+    /* Estilo para limpiar la imagen y remover el marco negro */
+    div[data-testid="stImage"] img {
+        border-radius: 8px;
+        mix-blend-mode: screen; /* Oculta el fondo negro si el fondo de la imagen es negro con contenido blanco */
+        filter: invert(1) hue-rotate(180deg); /* Mantiene la visibilidad del contenido */
+        max-height: 80px;
+        object-fit: contain;
     }
 
     /* Botón Principal */
@@ -275,27 +267,19 @@ with st.sidebar:
     st.markdown("---")
     st.caption("🚀 **Corporación para el Desarrollo de la Seguridad Social**\n\nSistema Automático de Testigos v2.0")
 
-# --- Encabezado Principal Integrado HTML ---
-if os.path.exists(NOMBRE_LOGO):
-    # Genera la tarjeta con el logo y título integrados limpiamente
-    st.markdown(f"""
-        <div class="header-card">
-            <img src="app/static/{NOMBRE_LOGO}" class="header-logo-img" alt="Logo CODESS">
-            <div class="header-text-container">
-                <h1 class="header-title">Consolidador de Testigos y Evidencias</h1>
-                <p class="header-subtitle">Plataforma Automática <span class="header-accent">E-Entrega & Google Drive</span></p>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-else:
-    st.markdown("""
-        <div class="header-card">
-            <div class="header-text-container">
-                <h1 class="header-title">Consolidador de Testigos y Evidencias</h1>
-                <p class="header-subtitle">Plataforma Automática <span class="header-accent">E-Entrega & Google Drive</span></p>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
+# --- Encabezado Principal Integrado en Tarjeta Única ---
+with st.container():
+    st.markdown('<div class="header-card">', unsafe_allow_html=True)
+    c1, c2 = st.columns([1, 4])
+    with c1:
+        if os.path.exists(NOMBRE_LOGO):
+            st.image(NOMBRE_LOGO, width=150)
+    with c2:
+        st.markdown("""
+            <h1 class="header-title">Consolidador de Testigos y Evidencias</h1>
+            <p class="header-subtitle">Plataforma Automática <span class="header-accent">E-Entrega & Google Drive</span></p>
+        """, unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # --- Sección de Entradas de Usuario ---
 col_left, col_right = st.columns(2)
