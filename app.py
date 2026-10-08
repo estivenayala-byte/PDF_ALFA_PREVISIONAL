@@ -4,6 +4,7 @@ import re
 import tempfile
 import zipfile
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 from pypdf import PdfWriter
 import streamlit as st
@@ -37,7 +38,6 @@ st.markdown("""
         --codess-orange-dark: #D35400;
     }
 
-    /* Tarjeta Contenedora Principal Adaptativa al Tema de Streamlit */
     .header-card {
         background-color: var(--secondary-background-color) !important;
         border: 1px solid rgba(128, 128, 128, 0.2) !important;
@@ -85,7 +85,6 @@ st.markdown("""
         font-weight: 700;
     }
 
-    /* Botón Principal Institucional */
     .stButton>button {
         width: 100%;
         background: linear-gradient(135deg, var(--codess-green) 0%, var(--codess-green-dark) 100%) !important;
@@ -105,7 +104,6 @@ st.markdown("""
         transform: translateY(-2px);
     }
 
-    /* Métricas Personalizadas */
     [data-testid="stMetricValue"] {
         color: var(--codess-green) !important;
         font-weight: 800 !important;
@@ -119,7 +117,6 @@ NOMBRE_LOGO = "Logo Codess.png"
 # --- Conexión y Diagnóstico de Google Drive API ---
 
 def obtener_servicio_drive():
-    """Autentica con OAuth2 utilizando el refresh_token del usuario corporativo."""
     if "google_oauth" in st.secrets:
         try:
             creds_info = st.secrets["google_oauth"]
@@ -138,7 +135,6 @@ def obtener_servicio_drive():
     return None
 
 def verificar_conexion_drive(service):
-    """Verifica en el sidebar si la conexión con Drive está lista y funcionando."""
     if service:
         try:
             about = service.about().get(fields="user").execute()
@@ -170,7 +166,7 @@ def buscar_y_descargar_drive_api(service, codigo_guia):
             corpora="allDrives",
             includeItemsFromAllDrives=True,
             supportsAllDrives=True,
-            pageSize=10
+            pageSize=5
         ).execute()
 
         archivos = resultados.get("files", [])
@@ -189,10 +185,31 @@ def buscar_y_descargar_drive_api(service, codigo_guia):
             stream_descarga.seek(0)
             return {"nombre": nombre_archivo, "stream": stream_descarga}
 
-    except Exception as e:
-        st.write(f"⚠️ Error al consultar la guía {guia_limpia} en Drive: {e}")
+    except Exception:
+        pass
 
     return None
+
+def buscar_varias_guias_drive_paralelo(service, lista_guias):
+    """Consulta múltiples guías en Google Drive simultáneamente en paralelo."""
+    if not service or not lista_guias:
+        return {}
+    
+    resultados = {}
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futuros = {
+            executor.submit(buscar_y_descargar_drive_api, service, guia): guia 
+            for guia in lista_guias if es_guia_valida(guia) and len(limpiar_guia(guia)) > 6
+        }
+        for futuro in futuros:
+            guia_original = futuros[futuro]
+            try:
+                res = futuro.result()
+                if res:
+                    resultados[guia_original] = res
+            except Exception:
+                pass
+    return resultados
 
 # --- Funciones Auxiliares ---
 
@@ -216,28 +233,26 @@ def limpiar_nombre_carpeta(nombre):
 
 def esperar_modal_generando_testigo(page):
     try:
-        page.wait_for_selector('text="Generando testigo, espera un momento..."', state="visible", timeout=5000)
-        page.wait_for_selector('text="Generando testigo, espera un momento..."', state="detached", timeout=60000)
+        page.wait_for_selector('text="Generando testigo, espera un momento..."', state="detached", timeout=30000)
     except Exception:
         pass
 
 def obtener_evento_tabla(page):
     try:
-        page.wait_for_selector("#tablaestados tbody tr", timeout=5000)
+        page.wait_for_selector("#tablaestados tbody tr", timeout=3000)
         texto = page.locator("#tablaestados tbody tr").first.locator("td").nth(4).inner_text().strip()
         return texto if texto else "Sin Estado"
     except Exception:
         return "No encontrado"
 
-def descargar_testigo_en_memoria(page, reintentos=3):
+def descargar_testigo_en_memoria(page, reintentos=2):
     for intento in range(1, reintentos + 1):
         try:
-            page.wait_for_selector("#ToolTables_tablaestados_1", state="visible", timeout=10000)
-            with page.expect_download(timeout=60000) as download_info:
+            page.wait_for_selector("#ToolTables_tablaestados_1", state="visible", timeout=5000)
+            with page.expect_download(timeout=30000) as download_info:
                 page.locator("#ToolTables_tablaestados_1").click()
 
             esperar_modal_generando_testigo(page)
-            page.wait_for_load_state("networkidle")
 
             download_file = download_info.value
             with open(download_file.path(), "rb") as f:
@@ -251,7 +266,6 @@ def descargar_testigo_en_memoria(page, reintentos=3):
             esperar_modal_generando_testigo(page)
             try:
                 page.locator("#btn_Buscar").click()
-                page.wait_for_load_state("networkidle")
             except Exception:
                 pass
     return None
@@ -317,30 +331,31 @@ if archivo_subido is not None:
 
                 entregas_afiliado, entregas_eps, entregas_empleado, entregas_arl = [], [], [], []
 
-                status_container = st.status("🔄 **Ejecutando proceso de extracción y unificación...**", expanded=True)
+                status_container = st.status("⚡ **Ejecutando proceso optimizado de extracción...**", expanded=True)
                 
                 with status_container:
-                    st.write("🌐 Iniciando navegador seguro Chromium en la nube...")
+                    st.write("🌐 Iniciando navegador ultrarrápido Chromium...")
                     progress_bar = st.progress(0)
 
                     with sync_playwright() as p:
                         browser = p.chromium.launch(
                             headless=True,
-                            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+                            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
                         )
                         context = browser.new_context(accept_downloads=True)
                         page_eentrega = context.new_page()
+
+                        # Bloquear imágenes pesadas y tipografías externas en Playwright para mayor velocidad
+                        page_eentrega.route("**/*.{png,jpg,jpeg,png,svg,woff,woff2,ttf}", lambda route: route.abort())
 
                         # Login en E-Entrega
                         page_eentrega.goto(URL_LOGIN_EENTREGA)
                         page_eentrega.locator("#user").fill(usr_eentrega.strip())
                         page_eentrega.locator("#pass").fill(pass_eentrega.strip())
                         page_eentrega.locator("#login").click()
-                        page_eentrega.wait_for_load_state("networkidle")
 
-                        page_eentrega.wait_for_selector('span[lan="MENU_STATUS"]', timeout=30000)
+                        page_eentrega.wait_for_selector('span[lan="MENU_STATUS"]', timeout=20000)
                         page_eentrega.locator('span[lan="MENU_STATUS"]').click()
-                        page_eentrega.wait_for_load_state("networkidle")
                         page_eentrega.get_by_text("Filtros avanzados").click()
 
                         total_filas = len(df)
@@ -362,12 +377,16 @@ if archivo_subido is not None:
                                 entregas_arl.append("N/A - Omitido por Afiliado")
                                 continue
 
+                            # Búsqueda en paralelo de todas las guías largas del registro en Google Drive
+                            guias_registro = [GUIA_AFILIADO, GUIA_EPS, GUIA_EMPLEADOR, GUIA_ARL]
+                            resultados_drive = buscar_varias_guias_drive_paralelo(drive_service, guias_registro)
+
                             archivos_adjuntos_afiliado = []
                             testigo_afiliado = None
 
                             guia_afiliado_limpia = limpiar_guia(GUIA_AFILIADO)
                             if len(guia_afiliado_limpia) > 6:
-                                pdf_drive = buscar_y_descargar_drive_api(drive_service, guia_afiliado_limpia)
+                                pdf_drive = resultados_drive.get(GUIA_AFILIADO)
                                 if pdf_drive:
                                     testigo_afiliado = pdf_drive
                                     entregas_afiliado.append("Encontrado en Drive")
@@ -377,19 +396,18 @@ if archivo_subido is not None:
                                 page_eentrega.bring_to_front()
                                 page_eentrega.locator("#message").fill(guia_afiliado_limpia)
                                 page_eentrega.locator("#btn_Buscar").click()
-                                page_eentrega.wait_for_load_state("networkidle")
 
                                 txt_afiliado = obtener_evento_tabla(page_eentrega)
                                 entregas_afiliado.append(txt_afiliado)
 
                                 try:
                                     page_eentrega.locator(".btnVerMensaje").first.click()
-                                    page_eentrega.wait_for_selector(".modal-body, #modalMensaje, .modal-content", state="visible", timeout=10000)
+                                    page_eentrega.wait_for_selector(".modal-body, #modalMensaje, .modal-content", state="visible", timeout=5000)
 
                                     archivos_adjuntos = page_eentrega.locator('text=/.+\\.pdf/i')
                                     for i in range(archivos_adjuntos.count()):
                                         try:
-                                            with page_eentrega.expect_download(timeout=30000) as download_info:
+                                            with page_eentrega.expect_download(timeout=15000) as download_info:
                                                 archivos_adjuntos.nth(i).click()
 
                                             download = download_info.value
@@ -404,7 +422,6 @@ if archivo_subido is not None:
                                             pass
 
                                     page_eentrega.get_by_role("button", name="Aceptar").click()
-                                    page_eentrega.wait_for_timeout(500)
                                 except Exception:
                                     pass
 
@@ -417,7 +434,7 @@ if archivo_subido is not None:
                                 if es_guia_valida(codigo_guia):
                                     guia_limpia = limpiar_guia(codigo_guia)
                                     if len(guia_limpia) > 6:
-                                        pdf_drive = buscar_y_descargar_drive_api(drive_service, guia_limpia)
+                                        pdf_drive = resultados_drive.get(codigo_guia)
                                         if pdf_drive:
                                             otros_testigos.append(pdf_drive)
                                             txt_estado = "Encontrado en Drive"
@@ -427,7 +444,6 @@ if archivo_subido is not None:
                                         page_eentrega.bring_to_front()
                                         page_eentrega.locator("#message").fill(codigo_guia)
                                         page_eentrega.locator("#btn_Buscar").click()
-                                        page_eentrega.wait_for_load_state("networkidle")
 
                                         txt_estado = obtener_evento_tabla(page_eentrega)
 
@@ -489,7 +505,7 @@ if archivo_subido is not None:
                                 path_relativo = os.path.relpath(path_absoluto, carpeta_a_zipear)
                                 zipf.write(path_absoluto, arcname=path_relativo)
 
-                status_container.update(label="🎉 **¡Proceso completado exitosamente!**", state="complete", expanded=False)
+                status_container.update(label="⚡ **¡Proceso completado a máxima velocidad!**", state="complete", expanded=False)
 
                 # --- Resumen e Indicadores Visuales CODESS ---
                 st.subheader("📊 Indicadores del Procesamiento")
