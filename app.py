@@ -27,7 +27,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- Estilos CSS Adaptativos e Invariables de Alto Contraste ---
+# --- Estilos CSS Adaptativos usando Variables Nativas de Streamlit ---
 st.markdown("""
     <style>
     :root {
@@ -35,47 +35,12 @@ st.markdown("""
         --codess-green-dark: #427521;
         --codess-orange: #E67E22;
         --codess-orange-dark: #D35400;
-        
-        /* Variables Modo Claro por Defecto */
-        --card-bg: #FFFFFF;
-        --card-border: #E2E8F0;
-        --text-primary: #1E293B;
-        --text-secondary: #475569;
-        --logo-blend: multiply;
     }
 
-    /* Soporte Dinámico para Modo Oscuro (Sistema o Streamlit Theme) */
-    @media (prefers-color-scheme: dark) {
-        :root {
-            --card-bg: #1E293B;
-            --card-border: #334155;
-            --text-primary: #F8FAFC;
-            --text-secondary: #94A3B8;
-            --logo-blend: normal;
-        }
-    }
-
-    /* Forzado explícito en contenedores de Streamlit para Dark Theme selector */
-    [data-theme="dark"] {
-        --card-bg: #1E293B;
-        --card-border: #334155;
-        --text-primary: #F8FAFC;
-        --text-secondary: #94A3B8;
-        --logo-blend: normal;
-    }
-
-    [data-theme="light"] {
-        --card-bg: #FFFFFF;
-        --card-border: #E2E8F0;
-        --text-primary: #1E293B;
-        --text-secondary: #475569;
-        --logo-blend: multiply;
-    }
-
-    /* Tarjeta Contenedora Principal */
+    /* Tarjeta Contenedora Principal Adaptativa al Tema de Streamlit */
     .header-card {
-        background-color: var(--card-bg) !important;
-        border: 1px solid var(--card-border) !important;
+        background-color: var(--secondary-background-color) !important;
+        border: 1px solid rgba(128, 128, 128, 0.2) !important;
         border-left: 8px solid var(--codess-green) !important;
         padding: 1.5rem 2rem;
         border-radius: 16px;
@@ -90,7 +55,6 @@ st.markdown("""
         max-height: 65px;
         width: auto;
         object-fit: contain;
-        mix-blend-mode: var(--logo-blend);
         background-color: transparent;
     }
 
@@ -101,7 +65,7 @@ st.markdown("""
     }
 
     .header-title {
-        color: var(--text-primary) !important;
+        color: var(--text-color) !important;
         font-size: 2.1rem;
         font-weight: 800;
         margin: 0;
@@ -109,7 +73,8 @@ st.markdown("""
     }
 
     .header-subtitle {
-        color: var(--text-secondary) !important;
+        color: var(--text-color) !important;
+        opacity: 0.8;
         font-size: 1rem;
         margin-top: 0.4rem;
         font-weight: 500;
@@ -120,18 +85,7 @@ st.markdown("""
         font-weight: 700;
     }
 
-    /* Encabezados fuera de la tarjeta */
-    .section-header {
-        color: var(--text-primary) !important;
-        font-size: 1.25rem;
-        font-weight: 700;
-        margin-bottom: 0.75rem;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-
-    /* Botón Principal */
+    /* Botón Principal Institucional */
     .stButton>button {
         width: 100%;
         background: linear-gradient(135deg, var(--codess-green) 0%, var(--codess-green-dark) 100%) !important;
@@ -155,12 +109,6 @@ st.markdown("""
     [data-testid="stMetricValue"] {
         color: var(--codess-green) !important;
         font-weight: 800 !important;
-    }
-
-    /* Sidebar Estilizada */
-    [data-testid="stSidebar"] {
-        background-color: var(--card-bg) !important;
-        border-right: 2px solid var(--card-border) !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -310,13 +258,13 @@ def descargar_testigo_en_memoria(page, reintentos=3):
 
 # --- Panel Lateral (Sidebar) ---
 with st.sidebar:
-    st.markdown('<div class="section-header">🛠️ Estado de Servicios</div>', unsafe_allow_html=True)
+    st.subheader("🛠️ Estado de Servicios")
     drive_service = obtener_servicio_drive()
     conexion_ok = verificar_conexion_drive(drive_service)
     st.markdown("---")
     st.caption("🚀 **Corporación para el Desarrollo de la Seguridad Social**\n\nSistema Automático de Testigos v2.0")
 
-# --- Encabezado Principal Flexbox Adaptativo ---
+# --- Encabezado Principal Adaptativo Nativamente ---
 if os.path.exists(NOMBRE_LOGO):
     import base64
     with open(NOMBRE_LOGO, "rb") as image_file:
@@ -339,12 +287,12 @@ st.markdown(f"""
 col_left, col_right = st.columns(2)
 
 with col_left:
-    st.markdown('<div class="section-header">🔐 Credenciales E-Entrega</div>', unsafe_allow_html=True)
+    st.markdown("#### 🔐 Credenciales E-Entrega")
     usr_eentrega = st.text_input("Correo electrónico corporativo", placeholder="ejemplo@codess.org.co")
     pass_eentrega = st.text_input("Contraseña E-Entrega", type="password")
 
 with col_right:
-    st.markdown('<div class="section-header">📄 Archivo de Entrada</div>', unsafe_allow_html=True)
+    st.markdown("#### 📄 Archivo de Entrada")
     archivo_subido = st.file_uploader("Subir planilla en Excel o CSV con las guías", type=["csv", "xlsx"])
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -544,7 +492,7 @@ if archivo_subido is not None:
                 status_container.update(label="🎉 **¡Proceso completado exitosamente!**", state="complete", expanded=False)
 
                 # --- Resumen e Indicadores Visuales CODESS ---
-                st.markdown('<div class="section-header">📊 Indicadores del Procesamiento</div>', unsafe_allow_html=True)
+                st.subheader("📊 Indicadores del Procesamiento")
                 m1, m2, m3 = st.columns(3)
                 m1.metric("Total Registros Procesados", len(df))
                 m2.metric("Archivos Hallados en Drive", entregas_empleado.count("Encontrado en Drive") + entregas_afiliado.count("Encontrado en Drive"))
