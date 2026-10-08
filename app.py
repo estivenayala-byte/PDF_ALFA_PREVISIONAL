@@ -43,7 +43,7 @@ st.markdown("""
         background-color: var(--bg-light);
     }
 
-    /* Encabezado Único */
+    /* Encabezado Único: Tarjeta contenedora con barra verde y alineación centrada */
     .header-card {
         background: #FFFFFF;
         padding: 1.5rem 2rem;
@@ -51,6 +51,23 @@ st.markdown("""
         border-left: 8px solid var(--codess-green);
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
         margin-bottom: 2rem;
+        display: flex;
+        align-items: center; /* Centra la imagen y el texto en el eje vertical */
+        gap: 2rem;
+    }
+
+    /* Estilo de la imagen del Logo dentro del contenedor */
+    .header-logo-img {
+        max-height: 65px;
+        width: auto;
+        object-fit: contain;
+        mix-blend-mode: multiply; /* Elimina cualquier artefacto de fondo */
+    }
+
+    .header-text-container {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
     }
 
     .header-title {
@@ -71,12 +88,6 @@ st.markdown("""
     .header-accent {
         color: var(--codess-orange);
         font-weight: 700;
-    }
-
-    /* Estilo limpio para la imagen dentro de la tarjeta */
-    div[data-testid="stImage"] img {
-        max-height: 75px;
-        object-fit: contain;
     }
 
     /* Botón Principal */
@@ -264,21 +275,24 @@ with st.sidebar:
     st.markdown("---")
     st.caption("🚀 **Corporación para el Desarrollo de la Seguridad Social**\n\nSistema Automático de Testigos v2.0")
 
-# --- Encabezado Principal Integrado dentro de la Tarjeta Blanca ---
-header_container = st.container()
+# --- Encabezado Principal en una Única Estructura Flexbox ---
+if os.path.exists(NOMBRE_LOGO):
+    import base64
+    with open(NOMBRE_LOGO, "rb") as image_file:
+        encoded_logo = base64.b64encode(image_file.read()).decode()
+    logo_html = f'<img src="data:image/png;base64,{encoded_logo}" class="header-logo-img" alt="Logo CODESS">'
+else:
+    logo_html = ""
 
-with header_container:
-    with st.container():
-        # Usamos columnas internas dentro de la misma tarjeta
-        c1, c2 = st.columns([1, 4])
-        with c1:
-            if os.path.exists(NOMBRE_LOGO):
-                st.image(NOMBRE_LOGO, use_container_width=True)
-        with c2:
-            st.markdown("""
-                <h1 class="header-title">Consolidador de Testigos y Evidencias</h1>
-                <p class="header-subtitle">Plataforma Automática <span class="header-accent">E-Entrega & Google Drive</span></p>
-            """, unsafe_allow_html=True)
+st.markdown(f"""
+    <div class="header-card">
+        {logo_html}
+        <div class="header-text-container">
+            <h1 class="header-title">Consolidador de Testigos y Evidencias</h1>
+            <p class="header-subtitle">Plataforma Automática <span class="header-accent">E-Entrega & Google Drive</span></p>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
 
 # --- Sección de Entradas de Usuario ---
 col_left, col_right = st.columns(2)
