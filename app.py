@@ -260,7 +260,6 @@ def descargar_testigo_en_memoria(page, reintentos=3):
 
 # --- Panel Lateral (Sidebar) ---
 with st.sidebar:
-    # Logo oficial de CODESS renderizado
     st.markdown("""
         <div style="text-align: center;">
             <div style="background-color: #ffffff; padding: 10px; border-radius: 10px; border: 1px solid #E0E0E0; margin-bottom: 15px;">
@@ -314,7 +313,7 @@ if archivo_subido is not None:
     if not (usr_eentrega.strip() and pass_eentrega.strip()):
         st.warning("⚠️ Ingresa tus credenciales de E-Entrega para activar el botón de inicio.")
     else:
-        st.success(f" Archivo listo para procesar: **{archivo_subido.name}**")
+        st.success(f"Archivo listo para procesar: **{archivo_subido.name}**")
 
         if st.button("🚀 INICIAR PROCESAMIENTO AUTOMÁTICO"):
             with tempfile.TemporaryDirectory() as dir_trabajo:
@@ -496,8 +495,8 @@ if archivo_subido is not None:
 
                     with zipfile.ZipFile(ruta_zip_salida, 'w', zipfile.ZIP_DEFLATED) as zipf:
                         for root, dirs, files in os.walk(carpeta_a_zipear):
-                            for file" in files:
-                                path_absoluto = os.path.join(root, file")
+                            for file in files:
+                                path_absoluto = os.path.join(root, file)
                                 path_relativo = os.path.relpath(path_absoluto, carpeta_a_zipear)
                                 zipf.write(path_absoluto, arcname=path_relativo)
 
