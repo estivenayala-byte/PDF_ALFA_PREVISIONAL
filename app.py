@@ -19,11 +19,86 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
+# --- Configuración de la Página ---
 st.set_page_config(
-    page_title="Consolidador de Testigos y PDFs",
+    page_title="Consolidador de Testigos - Codess",
     page_icon="📑",
-    layout="centered"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
+
+# --- Estilos CSS Personalizados Modernos ---
+st.markdown("""
+    <style>
+    /* Estilos Generales y Colores Primarios */
+    :root {
+        --primary-color: #1E88E5;
+        --background-color: #F8FAFC;
+        --card-background: #FFFFFF;
+    }
+    
+    .stApp {
+        background-color: var(--background-color);
+    }
+    
+    /* Encabezado Principal */
+    .header-container {
+        background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+        padding: 2.5rem 2rem;
+        border-radius: 16px;
+        color: white;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+    }
+    
+    .header-title {
+        font-size: 2.2rem;
+        font-weight: 700;
+        margin: 0;
+        color: #F8FAFC;
+    }
+    
+    .header-subtitle {
+        font-size: 1.05rem;
+        color: #94A3B8;
+        margin-top: 0.5rem;
+    }
+    
+    /* Tarjetas de Contenedor */
+    .css-card {
+        background-color: #FFFFFF;
+        padding: 1.8rem;
+        border-radius: 12px;
+        border: 1px solid #E2E8F0;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        margin-bottom: 1.5rem;
+    }
+    
+    /* Sidebar */
+    [data-testid="stSidebar"] {
+        background-color: #FFFFFF;
+        border-right: 1px solid #E2E8F0;
+    }
+    
+    /* Botón Principal */
+    .stButton>button {
+        width: 100%;
+        background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+        color: white;
+        font-weight: 600;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        border: none;
+        transition: all 0.2s ease;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+    }
+    
+    .stButton>button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3);
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 URL_LOGIN_EENTREGA = "https://codess.e-entrega.co/index.php"
 
@@ -54,13 +129,13 @@ def verificar_conexion_drive(service):
         try:
             about = service.about().get(fields="user").execute()
             email_conectado = about.get("user", {}).get("emailAddress", "Usuario")
-            st.sidebar.success(f"🟢 Conectado a Drive como:\n**{email_conectado}**")
+            st.sidebar.success(f"🟢 **Drive Conectado**\n\n`{email_conectado}`")
             return True
         except Exception as e:
-            st.sidebar.error(f"🔴 Error al conectar con Drive API:\n{e}")
+            st.sidebar.error(f"🔴 **Error de Conexión:**\n\n{e}")
             return False
     else:
-        st.sidebar.warning("⚠️ No se configuró [google_oauth] en Secrets.")
+        st.sidebar.warning("⚠️ Sin configuración de `[google_oauth]`")
         return False
 
 def buscar_y_descargar_drive_api(service, codigo_guia):
@@ -68,13 +143,11 @@ def buscar_y_descargar_drive_api(service, codigo_guia):
     if not service or not codigo_guia:
         return None
 
-    # Limpiar número de guía para la búsqueda
     guia_limpia = re.sub(r'[^0-9a-zA-Z]', '', str(codigo_guia).strip())
     if not guia_limpia:
         return None
 
     try:
-        # Busca coincidencia de la guía en cualquier parte del nombre del archivo PDF
         query = f"name contains '{guia_limpia}' and mimeType = 'application/pdf' and trashed = false"
         
         resultados = service.files().list(
@@ -107,7 +180,7 @@ def buscar_y_descargar_drive_api(service, codigo_guia):
 
     return None
 
-# --- Funciones de Apoyo y E-Entrega ---
+# --- Funciones Auxiliares ---
 
 def es_guia_valida(valor):
     if not valor or pd.isna(valor):
@@ -169,32 +242,46 @@ def descargar_testigo_en_memoria(page, reintentos=3):
                 pass
     return None
 
-# --- Interfaz Web de Streamlit ---
+# --- Panel Lateral (Sidebar) ---
+with st.sidebar:
+    st.image("https://img.icons8.com/color/96/google-drive--v1.png", width=50)
+    st.title("Panel de Control")
+    st.markdown("---")
+    drive_service = obtener_servicio_drive()
+    conexion_ok = verificar_conexion_drive(drive_service)
+    st.markdown("---")
+    st.caption("🤖 **Codess Automation Tool**\nVersion 2.0 - Cloud")
 
-st.sidebar.title("🛠️ Estado de la API")
-drive_service = obtener_servicio_drive()
-conexion_ok = verificar_conexion_drive(drive_service)
+# --- Encabezado Principal ---
+st.markdown("""
+    <div class="header-container">
+        <h1 class="header-title">Consolidador de Testigos y Evidencias</h1>
+        <p class="header-subtitle">Gestión automatizada de guías en E-Entrega y Google Drive</p>
+    </div>
+""", unsafe_allow_html=True)
 
-st.title("📑 Generador Automático de Testigos")
-st.write("Ingresa tus credenciales de E-Entrega y sube el archivo con las guías.")
+# --- Sección de Entradas de Usuario ---
+col_left, col_right = st.columns(2)
 
-st.subheader("1. Credenciales E-Entrega")
-col1, col2 = st.columns(2)
-with col1:
-    usr_eentrega = st.text_input("Correo E-Entrega", placeholder="ejemplo@codess.org.co")
-with col2:
-    pass_eentrega = st.text_input("Contraseña E-Entrega", type="password")
+with col_left:
+    st.markdown("### 🔐 Credenciales E-Entrega")
+    usr_eentrega = st.text_input("Correo electrónico", placeholder="ejemplo@codess.org.co")
+    pass_eentrega = st.text_input("Contraseña", type="password")
 
-st.subheader("2. Archivo Excel/CSV")
-archivo_subido = st.file_uploader("Selecciona el archivo Excel o CSV con las guías", type=["csv", "xlsx"])
+with col_right:
+    st.markdown("### 📄 Carga de Datos")
+    archivo_subido = st.file_uploader("Subir Excel o CSV con Guías", type=["csv", "xlsx"])
 
+st.markdown("<br>", unsafe_allow_html=True)
+
+# --- Botón de Ejecución y Procesamiento ---
 if archivo_subido is not None:
     if not (usr_eentrega.strip() and pass_eentrega.strip()):
-        st.warning("⚠️ Ingresa tus credenciales de E-Entrega para continuar.")
+        st.warning("⚠️ Ingresa tus credenciales de E-Entrega para habilitar el procesamiento.")
     else:
-        st.success(f"Archivo listo: **{archivo_subido.name}**")
+        st.info(f"📁 Archivo cargado correctamente: **{archivo_subido.name}**")
 
-        if st.button("🚀 Iniciar Procesamiento", type="primary"):
+        if st.button("🚀 Iniciar Procesamiento Automático"):
             with tempfile.TemporaryDirectory() as dir_trabajo:
                 ruta_input = os.path.join(dir_trabajo, archivo_subido.name)
                 with open(ruta_input, "wb") as f:
@@ -207,7 +294,10 @@ if archivo_subido is not None:
 
                 entregas_afiliado, entregas_eps, entregas_empleado, entregas_arl = [], [], [], []
 
-                with st.spinner("⏳ Procesando guías en E-Entrega y consultando Drive... Por favor espera."):
+                status_container = st.status("🔄 **Ejecutando automatización...**", expanded=True)
+                
+                with status_container:
+                    st.write("🌐 Conectando a E-Entrega con Chromium en la nube...")
                     progress_bar = st.progress(0)
 
                     with sync_playwright() as p:
@@ -239,6 +329,7 @@ if archivo_subido is not None:
                             GUIA_ARL = str(row.get("GUIA ARL", "")).strip()
                             NOMBRE_SERVICIO = limpiar_nombre_carpeta(row.get("SERVICIO", ""))
 
+                            st.write(f"🔎 Procesando registro {idx + 1}/{total_filas} - Documento: **{NUMERO_DOCUMENTO}**")
                             progress_bar.progress((idx + 1) / total_filas)
 
                             if not es_guia_valida(GUIA_AFILIADO):
@@ -375,11 +466,20 @@ if archivo_subido is not None:
                                 path_relativo = os.path.relpath(path_absoluto, carpeta_a_zipear)
                                 zipf.write(path_absoluto, arcname=path_relativo)
 
-                st.success("🎉 ¡Proceso finalizado con éxito!")
+                status_container.update(label="🎉 **¡Proceso completado con éxito!**", state="complete", expanded=False)
 
+                # --- Muestras e Indicadores Visuales ---
+                st.markdown("### 📊 Resumen del Procesamiento")
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Total Registros", len(df))
+                m2.metric("Con Evidencia Drive", entregas_empleado.count("Encontrado en Drive") + entregas_afiliado.count("Encontrado en Drive"))
+                m3.metric("Con Evidencia E-Entrega", total_filas - entregas_afiliado.count("No encontrado en Drive"))
+
+                st.markdown("<br>", unsafe_allow_html=True)
+                
                 with open(ruta_zip_salida, "rb") as f_zip:
                     st.download_button(
-                        label="📦 Descargar Resultados_PDF.zip",
+                        label="📦 Descargar Archivos Consolidados (ZIP)",
                         data=f_zip.read(),
                         file_name="Resultados_PDF.zip",
                         mime="application/zip"
