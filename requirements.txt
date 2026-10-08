@@ -1,5 +1,7 @@
 streamlit
 playwright
 pandas
-pypdf
 openpyxl
+pypdf
+google-api-python-client
+google-auth
