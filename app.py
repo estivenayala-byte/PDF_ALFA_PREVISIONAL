@@ -21,81 +21,97 @@ from googleapiclient.http import MediaIoBaseDownload
 
 # --- Configuración de la Página ---
 st.set_page_config(
-    page_title="Consolidador de Testigos - Codess",
+    page_title="Consolidador de Testigos - CODESS",
     page_icon="📑",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- Estilos CSS Personalizados Modernos ---
+# --- Estilos CSS Personalizados con Paleta Institucional CODESS ---
 st.markdown("""
     <style>
-    /* Estilos Generales y Colores Primarios */
+    /* Variables de Paleta CODESS */
     :root {
-        --primary-color: #1E88E5;
-        --background-color: #F8FAFC;
-        --card-background: #FFFFFF;
+        --codess-green: #5C9E31;
+        --codess-green-dark: #427521;
+        --codess-orange: #E67E22;
+        --codess-orange-dark: #D35400;
+        --codess-gray: #555555;
+        --bg-light: #F4F6F7;
     }
-    
+
     .stApp {
-        background-color: var(--background-color);
+        background-color: var(--bg-light);
     }
-    
+
     /* Encabezado Principal */
     .header-container {
-        background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
-        padding: 2.5rem 2rem;
+        background: linear-gradient(135deg, #FFFFFF 0%, #F8FAF9 100%);
+        padding: 2rem 2.5rem;
         border-radius: 16px;
-        color: white;
+        border-left: 8px solid var(--codess-green);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
         margin-bottom: 2rem;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
     }
-    
+
     .header-title {
-        font-size: 2.2rem;
-        font-weight: 700;
+        color: #2C3E50;
+        font-size: 2.1rem;
+        font-weight: 800;
         margin: 0;
-        color: #F8FAFC;
     }
-    
+
     .header-subtitle {
+        color: var(--codess-gray);
         font-size: 1.05rem;
-        color: #94A3B8;
-        margin-top: 0.5rem;
+        margin-top: 0.4rem;
+        font-weight: 500;
     }
-    
-    /* Tarjetas de Contenedor */
-    .css-card {
-        background-color: #FFFFFF;
-        padding: 1.8rem;
-        border-radius: 12px;
-        border: 1px solid #E2E8F0;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-        margin-bottom: 1.5rem;
+
+    .header-accent {
+        color: var(--codess-orange);
+        font-weight: 700;
     }
-    
-    /* Sidebar */
-    [data-testid="stSidebar"] {
-        background-color: #FFFFFF;
-        border-right: 1px solid #E2E8F0;
-    }
-    
-    /* Botón Principal */
+
+    /* Botón Principal con Degradado Codess */
     .stButton>button {
         width: 100%;
-        background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
-        color: white;
-        font-weight: 600;
-        padding: 0.75rem 1.5rem;
-        border-radius: 8px;
-        border: none;
-        transition: all 0.2s ease;
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+        background: linear-gradient(135deg, var(--codess-green) 0%, var(--codess-green-dark) 100%) !important;
+        color: white !important;
+        font-weight: 700 !important;
+        font-size: 1.05rem !important;
+        padding: 0.8rem 1.5rem !important;
+        border-radius: 10px !important;
+        border: none !important;
+        box-shadow: 0 4px 12px rgba(92, 158, 49, 0.3) !important;
+        transition: all 0.3s ease !important;
     }
-    
+
     .stButton>button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3);
+        background: linear-gradient(135deg, var(--codess-orange) 0%, var(--codess-orange-dark) 100%) !important;
+        box-shadow: 0 6px 18px rgba(230, 126, 34, 0.4) !important;
+        transform: translateY(-2px);
+    }
+
+    /* Métrica Cards Personalizadas */
+    [data-testid="stMetricValue"] {
+        color: var(--codess-green) !important;
+        font-weight: 800 !important;
+    }
+
+    /* Sidebar Estilizada */
+    [data-testid="stSidebar"] {
+        background-color: #FFFFFF;
+        border-right: 2px solid #EAECEE;
+    }
+
+    /* Pestañas de Estado */
+    .stStatusWidget {
+        border-radius: 12px !important;
+        border: 1px solid #D5D8DC !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -244,19 +260,25 @@ def descargar_testigo_en_memoria(page, reintentos=3):
 
 # --- Panel Lateral (Sidebar) ---
 with st.sidebar:
-    st.image("https://img.icons8.com/color/96/google-drive--v1.png", width=50)
-    st.title("Panel de Control")
-    st.markdown("---")
+    if os.path.exists("logo_codess.png"):
+        st.image("logo_codess.png", use_container_width=True)
+    else:
+        st.markdown("### 🏢 **CODESS**")
+        
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("#### 🛠️ Estado de Servicios")
     drive_service = obtener_servicio_drive()
     conexion_ok = verificar_conexion_drive(drive_service)
     st.markdown("---")
-    st.caption("🤖 **Codess Automation Tool**\nVersion 2.0 - Cloud")
+    st.caption("🚀 **Corporación para el Desarrollo de la Seguridad Social**\n\nSistema Automático de Testigos v2.0")
 
-# --- Encabezado Principal ---
+# --- Encabezado Principal Institucional ---
 st.markdown("""
     <div class="header-container">
-        <h1 class="header-title">Consolidador de Testigos y Evidencias</h1>
-        <p class="header-subtitle">Gestión automatizada de guías en E-Entrega y Google Drive</p>
+        <div>
+            <h1 class="header-title">Consolidador de Testigos y Evidencias</h1>
+            <p class="header-subtitle">Automatización Inteligente <span class="header-accent">E-Entrega & Google Drive</span></p>
+        </div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -264,24 +286,24 @@ st.markdown("""
 col_left, col_right = st.columns(2)
 
 with col_left:
-    st.markdown("### 🔐 Credenciales E-Entrega")
-    usr_eentrega = st.text_input("Correo electrónico", placeholder="ejemplo@codess.org.co")
-    pass_eentrega = st.text_input("Contraseña", type="password")
+    st.markdown("#### 🔐 Credenciales E-Entrega")
+    usr_eentrega = st.text_input("Correo electrónico corporativo", placeholder="ejemplo@codess.org.co")
+    pass_eentrega = st.text_input("Contraseña E-Entrega", type="password")
 
 with col_right:
-    st.markdown("### 📄 Carga de Datos")
-    archivo_subido = st.file_uploader("Subir Excel o CSV con Guías", type=["csv", "xlsx"])
+    st.markdown("#### 📄 Archivo de Entrada")
+    archivo_subido = st.file_uploader("Subir planilla en Excel o CSV con las guías", type=["csv", "xlsx"])
 
 st.markdown("<br>", unsafe_allow_html=True)
 
 # --- Botón de Ejecución y Procesamiento ---
 if archivo_subido is not None:
     if not (usr_eentrega.strip() and pass_eentrega.strip()):
-        st.warning("⚠️ Ingresa tus credenciales de E-Entrega para habilitar el procesamiento.")
+        st.warning("⚠️ Ingresa tus credenciales de E-Entrega para activar el botón de inicio.")
     else:
-        st.info(f"📁 Archivo cargado correctamente: **{archivo_subido.name}**")
+        st.success(f" Archivo listo para procesar: **{archivo_subido.name}**")
 
-        if st.button("🚀 Iniciar Procesamiento Automático"):
+        if st.button("🚀 INICIAR PROCESAMIENTO AUTOMÁTICO"):
             with tempfile.TemporaryDirectory() as dir_trabajo:
                 ruta_input = os.path.join(dir_trabajo, archivo_subido.name)
                 with open(ruta_input, "wb") as f:
@@ -294,10 +316,10 @@ if archivo_subido is not None:
 
                 entregas_afiliado, entregas_eps, entregas_empleado, entregas_arl = [], [], [], []
 
-                status_container = st.status("🔄 **Ejecutando automatización...**", expanded=True)
+                status_container = st.status("🔄 **Ejecutando proceso de extracción y unificación...**", expanded=True)
                 
                 with status_container:
-                    st.write("🌐 Conectando a E-Entrega con Chromium en la nube...")
+                    st.write("🌐 Iniciando navegador seguro Chromium en la nube...")
                     progress_bar = st.progress(0)
 
                     with sync_playwright() as p:
@@ -329,7 +351,7 @@ if archivo_subido is not None:
                             GUIA_ARL = str(row.get("GUIA ARL", "")).strip()
                             NOMBRE_SERVICIO = limpiar_nombre_carpeta(row.get("SERVICIO", ""))
 
-                            st.write(f"🔎 Procesando registro {idx + 1}/{total_filas} - Documento: **{NUMERO_DOCUMENTO}**")
+                            st.write(f"🔎 Procesando registro **{idx + 1}/{total_filas}** — Documento: **{NUMERO_DOCUMENTO}**")
                             progress_bar.progress((idx + 1) / total_filas)
 
                             if not es_guia_valida(GUIA_AFILIADO):
@@ -402,7 +424,7 @@ if archivo_subido is not None:
                                             txt_estado = "No encontrado en Drive"
                                     else:
                                         page_eentrega.bring_to_front()
-                                        page_eentrega.locator("#message").fill(guia_limpia)
+                                        page_eentrega.locator("#message").fill(codigo_guia)
                                         page_eentrega.locator("#btn_Buscar").click()
                                         page_eentrega.wait_for_load_state("networkidle")
 
@@ -466,21 +488,21 @@ if archivo_subido is not None:
                                 path_relativo = os.path.relpath(path_absoluto, carpeta_a_zipear)
                                 zipf.write(path_absoluto, arcname=path_relativo)
 
-                status_container.update(label="🎉 **¡Proceso completado con éxito!**", state="complete", expanded=False)
+                status_container.update(label="🎉 **¡Proceso completado exitosamente!**", state="complete", expanded=False)
 
-                # --- Muestras e Indicadores Visuales ---
-                st.markdown("### 📊 Resumen del Procesamiento")
+                # --- Resumen e Indicadores Visuales CODESS ---
+                st.markdown("### 📊 Indicadores del Procesamiento")
                 m1, m2, m3 = st.columns(3)
-                m1.metric("Total Registros", len(df))
-                m2.metric("Con Evidencia Drive", entregas_empleado.count("Encontrado en Drive") + entregas_afiliado.count("Encontrado en Drive"))
-                m3.metric("Con Evidencia E-Entrega", total_filas - entregas_afiliado.count("No encontrado en Drive"))
+                m1.metric("Total Registros Procesados", len(df))
+                m2.metric("Archivos Hallados en Drive", entregas_empleado.count("Encontrado en Drive") + entregas_afiliado.count("Encontrado en Drive"))
+                m3.metric("Testigos Exitosos E-Entrega", total_filas - entregas_afiliado.count("No encontrado en Drive"))
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 
                 with open(ruta_zip_salida, "rb") as f_zip:
                     st.download_button(
-                        label="📦 Descargar Archivos Consolidados (ZIP)",
+                        label="📦 Descargar Resultados Consolidados (.ZIP)",
                         data=f_zip.read(),
-                        file_name="Resultados_PDF.zip",
+                        file_name="Resultados_PDF_CODESS.zip",
                         mime="application/zip"
                     )
