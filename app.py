@@ -1,6 +1,7 @@
 import io
 import os
 import re
+import gc
 import tempfile
 import zipfile
 import subprocess
@@ -165,7 +166,7 @@ def buscar_y_descargar_drive_api(service, codigo_guia):
             corpora="allDrives",
             includeItemsFromAllDrives=True,
             supportsAllDrives=True,
-            pageSize=5
+            pageSize=1
         ).execute()
 
         archivos = resultados.get("files", [])
@@ -173,9 +174,10 @@ def buscar_y_descargar_drive_api(service, codigo_guia):
             file_id = archivos[0]["id"]
             nombre_archivo = archivos[0]["name"]
 
+            # Descarga optimizada en bloques de 1 MB
             request = service.files().get_media(fileId=file_id)
             stream_descarga = io.BytesIO()
-            downloader = MediaIoBaseDownload(stream_descarga, request)
+            downloader = MediaIoBaseDownload(stream_descarga, request, chunksize=1024*1024)
             
             done = False
             while not done:
@@ -194,7 +196,7 @@ def buscar_varias_guias_drive_paralelo(service, lista_guias):
         return {}
     
     resultados = {}
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=8) as executor:
         futuros = {
             executor.submit(buscar_y_descargar_drive_api, service, guia): guia 
             for guia in lista_guias if es_guia_valida(guia) and len(limpiar_guia(guia)) > 6
@@ -231,13 +233,13 @@ def limpiar_nombre_carpeta(nombre):
 
 def esperar_modal_generando_testigo(page):
     try:
-        page.wait_for_selector('text="Generando testigo, espera un momento..."', state="detached", timeout=20000)
+        page.wait_for_selector('text="Generando testigo, espera un momento..."', state="detached", timeout=12000)
     except Exception:
         pass
 
 def obtener_evento_tabla(page):
     try:
-        page.wait_for_selector("#tablaestados tbody tr", timeout=5000)
+        page.wait_for_selector("#tablaestados tbody tr", timeout=3000)
         texto = page.locator("#tablaestados tbody tr").first.locator("td").nth(4).inner_text().strip()
         return texto if texto else "Sin Estado"
     except Exception:
@@ -245,8 +247,7 @@ def obtener_evento_tabla(page):
 
 def consultar_guia_eentrega(page, guia):
     try:
-        page.bring_to_front()
-        page.wait_for_selector("#message", state="visible", timeout=10000)
+        page.wait_for_selector("#message", state="visible", timeout=8000)
         page.locator("#message").fill(guia)
         page.locator("#btn_Buscar").click()
         return True
@@ -256,8 +257,8 @@ def consultar_guia_eentrega(page, guia):
 def descargar_testigo_en_memoria(page, reintentos=2):
     for intento in range(1, reintentos + 1):
         try:
-            page.wait_for_selector("#ToolTables_tablaestados_1", state="visible", timeout=6000)
-            with page.expect_download(timeout=25000) as download_info:
+            page.wait_for_selector("#ToolTables_tablaestados_1", state="visible", timeout=4000)
+            with page.expect_download(timeout=18000) as download_info:
                 page.locator("#ToolTables_tablaestados_1").click()
 
             esperar_modal_generando_testigo(page)
@@ -339,10 +340,10 @@ if archivo_subido is not None:
 
                 entregas_afiliado, entregas_eps, entregas_empleado, entregas_arl = [], [], [], []
 
-                status_container = st.status("⚡ **Ejecutando proceso optimizado de extracción...**", expanded=True)
+                status_container = st.status("⚡ **Ejecutando proceso ultra-rápido de extracción...**", expanded=True)
                 
                 with status_container:
-                    st.write("🌐 Iniciando navegador seguro Chromium...")
+                    st.write("🌐 Iniciando motor de extracción Chromium...")
                     progress_bar = st.progress(0)
 
                     with sync_playwright() as p:
@@ -353,8 +354,8 @@ if archivo_subido is not None:
                         context = browser.new_context(accept_downloads=True)
                         page_eentrega = context.new_page()
 
-                        # Bloquear fuentes pesadas en Playwright para mejorar tiempos
-                        page_eentrega.route("**/*.{woff,woff2,ttf,eot}", lambda route: route.abort())
+                        # BLOQUEO AGRESIVO: Bloquear imágenes, CSS, fuentes y rastreadores para acelerar E-Entrega
+                        page_eentrega.route("**/*.{png,jpg,jpeg,gif,svg,woff,woff2,ttf,eot,css}", lambda route: route.abort())
 
                         # Login en E-Entrega
                         page_eentrega.goto(URL_LOGIN_EENTREGA)
@@ -379,6 +380,10 @@ if archivo_subido is not None:
                             st.write(f"🔎 Procesando registro **{idx + 1}/{total_filas}** — Documento: **{NUMERO_DOCUMENTO}**")
                             progress_bar.progress((idx + 1) / total_filas)
 
+                            # Liberación periódica de RAM cada 15 registros para prevenir reinicios del servidor
+                            if idx > 0 and idx % 15 == 0:
+                                gc.collect()
+
                             if not es_guia_valida(GUIA_AFILIADO):
                                 entregas_afiliado.append("N/A - Guía Inválida")
                                 entregas_eps.append("N/A - Omitido por Afiliado")
@@ -386,7 +391,7 @@ if archivo_subido is not None:
                                 entregas_arl.append("N/A - Omitido por Afiliado")
                                 continue
 
-                            # Búsqueda en paralelo de todas las guías largas del registro en Google Drive
+                            # Búsqueda ultra-rápida paralela en Google Drive
                             guias_registro = [GUIA_AFILIADO, GUIA_EPS, GUIA_EMPLEADOR, GUIA_ARL]
                             resultados_drive = buscar_varias_guias_drive_paralelo(drive_service, guias_registro)
 
@@ -408,12 +413,12 @@ if archivo_subido is not None:
 
                                     try:
                                         page_eentrega.locator(".btnVerMensaje").first.click()
-                                        page_eentrega.wait_for_selector(".modal-body, #modalMensaje, .modal-content", state="visible", timeout=5000)
+                                        page_eentrega.wait_for_selector(".modal-body, #modalMensaje, .modal-content", state="visible", timeout=4000)
 
                                         archivos_adjuntos = page_eentrega.locator('text=/.+\\.pdf/i')
                                         for i in range(archivos_adjuntos.count()):
                                             try:
-                                                with page_eentrega.expect_download(timeout=15000) as download_info:
+                                                with page_eentrega.expect_download(timeout=12000) as download_info:
                                                     archivos_adjuntos.nth(i).click()
 
                                                 download = download_info.value
