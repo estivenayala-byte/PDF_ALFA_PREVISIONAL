@@ -51,9 +51,6 @@ st.markdown("""
         border-left: 8px solid var(--codess-green);
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
         margin-bottom: 2rem;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
     }
 
     .header-title {
@@ -106,17 +103,11 @@ st.markdown("""
         background-color: #FFFFFF;
         border-right: 2px solid #EAECEE;
     }
-
-    .logo-img {
-        max-width: 100%;
-        height: auto;
-        border-radius: 8px;
-        margin-bottom: 1rem;
-    }
     </style>
 """, unsafe_allow_html=True)
 
 URL_LOGIN_EENTREGA = "https://codess.e-entrega.co/index.php"
+NOMBRE_LOGO = "Logo Codess.png"
 
 # --- Conexión y Diagnóstico de Google Drive API ---
 
@@ -260,17 +251,17 @@ def descargar_testigo_en_memoria(page, reintentos=3):
 
 # --- Panel Lateral (Sidebar) ---
 with st.sidebar:
-    st.markdown("""
-        <div style="text-align: center;">
-            <div style="background-color: #ffffff; padding: 10px; border-radius: 10px; border: 1px solid #E0E0E0; margin-bottom: 15px;">
-                <h2 style="color: #5C9E31; margin:0; font-weight:900;">CODESS</h2>
-                <p style="color: #E67E22; margin:0; font-size:11px; font-weight:bold;">DESARROLLO DE LA SEGURIDAD SOCIAL</p>
+    if os.path.exists(NOMBRE_LOGO):
+        st.image(NOMBRE_LOGO, use_container_width=True)
+    else:
+        st.markdown("""
+            <div style="text-align: center;">
+                <div style="background-color: #ffffff; padding: 10px; border-radius: 10px; border: 1px solid #E0E0E0; margin-bottom: 15px;">
+                    <h2 style="color: #5C9E31; margin:0; font-weight:900;">CODESS</h2>
+                    <p style="color: #E67E22; margin:0; font-size:11px; font-weight:bold;">DESARROLLO DE LA SEGURIDAD SOCIAL</p>
+                </div>
             </div>
-        </div>
-    """, unsafe_allow_html=True)
-
-    if os.path.exists("logo_codess.png"):
-        st.image("logo_codess.png", use_container_width=True)
+        """, unsafe_allow_html=True)
 
     st.markdown("#### 🛠️ Estado de Servicios")
     drive_service = obtener_servicio_drive()
@@ -278,21 +269,20 @@ with st.sidebar:
     st.markdown("---")
     st.caption("🚀 **Corporación para el Desarrollo de la Seguridad Social**\n\nSistema Automático de Testigos v2.0")
 
-# --- Encabezado Principal Institucional ---
+# --- Encabezado Principal Institucional con Logo Integrado al Lado ---
 col_head1, col_head2 = st.columns([3, 1])
+
 with col_head1:
     st.markdown("""
         <div class="header-container">
-            <div>
-                <h1 class="header-title">Consolidador de Testigos y Evidencias</h1>
-                <p class="header-subtitle">Plataforma Automática <span class="header-accent">E-Entrega & Google Drive</span></p>
-            </div>
+            <h1 class="header-title">Consolidador de Testigos y Evidencias</h1>
+            <p class="header-subtitle">Plataforma Automática <span class="header-accent">E-Entrega & Google Drive</span></p>
         </div>
     """, unsafe_allow_html=True)
 
 with col_head2:
-    if os.path.exists("logo_codess.png"):
-        st.image("logo_codess.png", width=180)
+    if os.path.exists(NOMBRE_LOGO):
+        st.image(NOMBRE_LOGO, use_container_width=True)
 
 # --- Sección de Entradas de Usuario ---
 col_left, col_right = st.columns(2)
