@@ -249,7 +249,7 @@ def obtener_evento_tabla(page):
 
 def consultar_guia_eentrega(page, guia):
     try:
-        page.wait_for_selector("#message", state="visible", timeout=8000)
+        page.wait_for_selector("#message", state="attached", timeout=8000)
         input_msg = page.locator("#message")
         input_msg.fill(guia)
         page.locator("#btn_Buscar").click()
@@ -392,7 +392,7 @@ if archivo_subido is not None:
                         context = browser.new_context(accept_downloads=True)
                         page_eentrega = context.new_page()
 
-                        # Bloqueo selectivo de recursos pesados sin afectar Javascript
+                        # Bloqueo selectivo de recursos pesados
                         page_eentrega.route("**/*.{png,jpg,jpeg,gif,svg,woff,woff2,ttf,eot}", lambda route: route.abort())
 
                         # Login en E-Entrega
@@ -403,8 +403,16 @@ if archivo_subido is not None:
 
                         page_eentrega.wait_for_selector('span[lan="MENU_STATUS"]', timeout=30000)
                         page_eentrega.locator('span[lan="MENU_STATUS"]').click()
-                        page_eentrega.get_by_text("Filtros avanzados").click()
-                        page_eentrega.wait_for_selector("#message", state="visible", timeout=20000)
+                        
+                        # APERTURA ROBUSTA DE FILTROS AVANZADOS
+                        try:
+                            page_eentrega.get_by_text("Filtros avanzados").click()
+                            page_eentrega.wait_for_selector("#message", state="attached", timeout=15000)
+                        except Exception:
+                            # Reintento defensivo si la vista tarda en responder
+                            page_eentrega.locator('span[lan="MENU_STATUS"]').click()
+                            page_eentrega.get_by_text("Filtros avanzados").click()
+                            page_eentrega.wait_for_selector("#message", state="attached", timeout=25000)
 
                         total_filas = len(df)
                         for idx, row in df.iterrows():
